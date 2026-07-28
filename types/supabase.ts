@@ -516,6 +516,39 @@ export interface Database {
         Args: []
         Returns: boolean
       }
+      get_public_products: {
+        Args: {
+          p_product_id?: string | null
+        }
+        Returns: {
+          id: string
+          name: string
+          slug: string
+          short_description: string
+          description: string
+          brand: string
+          category_id: string
+          marketplace_id: string
+          external_id: string | null
+          image_url: string
+          gallery: string[]
+          current_price: string
+          old_price: string | null
+          discount_percentage: number | null
+          installments: string | null
+          installment_value: string | null
+          free_shipping: boolean
+          coupon_id: string | null
+          status: Database['public']['Enums']['product_status']
+          featured: boolean
+          trending: boolean
+          best_value: boolean
+          flash_deal: boolean
+          created_at: string
+          updated_at: string
+          last_price_update: string
+        }[]
+      }
     }
     Enums: {
       product_status: 'draft' | 'active' | 'inactive' | 'expired'

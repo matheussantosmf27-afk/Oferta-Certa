@@ -37,8 +37,8 @@ create table public.coupons (
   description text not null,
   marketplace text not null,
   discount_type coupon_discount_type not null,
-  discount_value numeric not null,
-  minimum_purchase numeric,
+  discount_value numeric not null check (discount_value > 0),
+  minimum_purchase numeric check (minimum_purchase >= 0),
   valid_until timestamptz not null,
   status coupon_status not null default 'active',
   created_at timestamptz not null default now(),
@@ -52,19 +52,19 @@ create table public.products (
   short_description text not null,
   description text not null,
   brand text not null,
-  category_id uuid not null references public.categories(id) on delete cascade,
-  marketplace_id uuid not null references public.marketplaces(id) on delete cascade,
+  category_id uuid not null references public.categories(id) on delete restrict,
+  marketplace_id uuid not null references public.marketplaces(id) on delete restrict,
   external_id text,
   affiliate_url text not null,
   image_url text not null,
   gallery text[] not null default array[]::text[],
-  current_price numeric not null,
-  old_price numeric,
-  discount_percentage integer,
+  current_price numeric not null check (current_price >= 0),
+  old_price numeric check (old_price >= 0),
+  discount_percentage integer check (discount_percentage >= 0 and discount_percentage <= 100),
   installments text,
-  installment_value numeric,
+  installment_value numeric check (installment_value >= 0),
   free_shipping boolean not null default false,
-  coupon_id uuid references public.coupons(id),
+  coupon_id uuid references public.coupons(id) on delete set null,
   status product_status not null default 'draft',
   featured boolean not null default false,
   trending boolean not null default false,
@@ -78,7 +78,7 @@ create table public.products (
 create table public.product_price_history (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references public.products(id) on delete cascade,
-  price numeric not null,
+  price numeric not null check (price >= 0),
   recorded_at timestamptz not null default now()
 );
 
@@ -109,7 +109,8 @@ create table public.promotions (
   active boolean not null default true,
   status promotion_status not null default 'active',
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint promotions_dates_check check (ends_at is null or ends_at >= starts_at)
 );
 
 create table public.banners (
@@ -135,7 +136,8 @@ create table public.settings (
 create table public.newsletter_subscribers (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint newsletter_subscribers_email_check check (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
 );
 
 create table public.profiles (
@@ -148,14 +150,15 @@ create table public.profiles (
 
 create table public.clicks (
   id uuid primary key default gen_random_uuid(),
-  product_id uuid references public.products(id),
-  marketplace_id uuid references public.marketplaces(id),
+  product_id uuid references public.products(id) on delete set null,
+  marketplace_id uuid references public.marketplaces(id) on delete set null,
   referrer text,
   source text,
   medium text,
   campaign text,
   device_type text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint clicks_product_or_marketplace_check check (product_id is not null or marketplace_id is not null)
 );
 
 create index products_category_id_idx on public.products (category_id);
@@ -168,7 +171,57 @@ create index clicks_product_id_idx on public.clicks (product_id);
 create index clicks_marketplace_id_idx on public.clicks (marketplace_id);
 create index clicks_created_at_idx on public.clicks (created_at);
 
-create or replace function public.is_admin() returns boolean language sql stable as $$
+create or replace function public.set_timestamps()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_at := now();
+    new.updated_at := now();
+  else
+    new.updated_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.set_created_at()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.set_profile_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is not null and not public.is_admin() then
+    new.id := auth.uid();
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
   select exists (
     select 1
     from public.profiles p
@@ -176,6 +229,112 @@ create or replace function public.is_admin() returns boolean language sql stable
       and p.role = 'admin'
   );
 $$;
+
+create or replace function public.get_public_products(p_product_id uuid default null)
+returns table (
+  id uuid,
+  name text,
+  slug text,
+  short_description text,
+  description text,
+  brand text,
+  category_id uuid,
+  marketplace_id uuid,
+  external_id text,
+  image_url text,
+  gallery text[],
+  current_price numeric,
+  old_price numeric,
+  discount_percentage integer,
+  installments text,
+  installment_value numeric,
+  free_shipping boolean,
+  coupon_id uuid,
+  status product_status,
+  featured boolean,
+  trending boolean,
+  best_value boolean,
+  flash_deal boolean,
+  created_at timestamptz,
+  updated_at timestamptz,
+  last_price_update timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select
+    id,
+    name,
+    slug,
+    short_description,
+    description,
+    brand,
+    category_id,
+    marketplace_id,
+    external_id,
+    image_url,
+    gallery,
+    current_price,
+    old_price,
+    discount_percentage,
+    installments,
+    installment_value,
+    free_shipping,
+    coupon_id,
+    status,
+    featured,
+    trending,
+    best_value,
+    flash_deal,
+    created_at,
+    updated_at,
+    last_price_update
+  from public.products
+  where status = 'active'
+    and (p_product_id is null or id = p_product_id);
+$$;
+
+grant execute on function public.is_admin() to authenticated, anon;
+grant execute on function public.get_public_products(uuid) to authenticated, anon;
+
+create trigger set_timestamps_categories
+  before insert or update on public.categories
+  for each row execute function public.set_timestamps();
+create trigger set_timestamps_marketplaces
+  before insert or update on public.marketplaces
+  for each row execute function public.set_timestamps();
+create trigger set_timestamps_coupons
+  before insert or update on public.coupons
+  for each row execute function public.set_timestamps();
+create trigger set_timestamps_products
+  before insert or update on public.products
+  for each row execute function public.set_timestamps();
+create trigger set_timestamps_articles
+  before insert or update on public.articles
+  for each row execute function public.set_timestamps();
+create trigger set_timestamps_promotions
+  before insert or update on public.promotions
+  for each row execute function public.set_timestamps();
+create trigger set_timestamps_banners
+  before insert or update on public.banners
+  for each row execute function public.set_timestamps();
+create trigger set_timestamps_settings
+  before insert or update on public.settings
+  for each row execute function public.set_timestamps();
+create trigger set_timestamps_profiles
+  before insert or update on public.profiles
+  for each row execute function public.set_timestamps();
+create trigger set_created_at_newsletter_subscribers
+  before insert on public.newsletter_subscribers
+  for each row execute function public.set_created_at();
+create trigger set_created_at_clicks
+  before insert on public.clicks
+  for each row execute function public.set_created_at();
+create trigger set_profile_id_before_insert
+  before insert on public.profiles
+  for each row execute function public.set_profile_id();
 
 alter table public.categories enable row level security;
 create policy "Public select categories" on public.categories for select using (true);
@@ -190,7 +349,6 @@ create policy "Public select coupons" on public.coupons for select using (status
 create policy "Admin full access coupons" on public.coupons for all using (public.is_admin()) with check (public.is_admin());
 
 alter table public.products enable row level security;
-create policy "Public select products" on public.products for select using (status = 'active');
 create policy "Admin full access products" on public.products for all using (public.is_admin()) with check (public.is_admin());
 
 alter table public.product_price_history enable row level security;
@@ -220,7 +378,9 @@ create policy "Admin full access settings" on public.settings for all using (pub
 alter table public.newsletter_subscribers enable row level security;
 create policy "Allow insert newsletter subscribers" on public.newsletter_subscribers for insert with check (
   auth.role() in ('anon', 'authenticated')
-  and new.created_at is null
+  and new.email is not null
+  and new.email <> ''
+  and new.email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
 );
 create policy "Admin full access newsletter subscribers" on public.newsletter_subscribers for all using (public.is_admin()) with check (public.is_admin());
 
@@ -228,22 +388,20 @@ alter table public.profiles enable row level security;
 create policy "Self select profiles" on public.profiles for select using (auth.uid() = id);
 create policy "Admin select profiles" on public.profiles for select using (public.is_admin());
 create policy "Self insert profiles" on public.profiles for insert with check (
-  auth.uid() = new.id
+  auth.role() = 'authenticated'
   and new.role = 'user'
+  and new.email is not null
+  and new.email <> ''
 );
 create policy "Admin insert profiles" on public.profiles for insert with check (public.is_admin());
 create policy "Self update profiles" on public.profiles for update using (auth.uid() = id) with check (
   auth.uid() = new.id
-  and new.role = 'user'
+  and new.role = old.role
+  and new.email is not null
+  and new.email <> ''
 );
 create policy "Admin update profiles" on public.profiles for update using (public.is_admin()) with check (public.is_admin());
 create policy "Admin delete profiles" on public.profiles for delete using (public.is_admin());
 
 alter table public.clicks enable row level security;
-create policy "Allow insert clicks" on public.clicks for insert with check (
-  auth.role() in ('anon', 'authenticated')
-  and new.created_at is null
-  and (new.product_id is not null or new.marketplace_id is not null)
-);
-create policy "Admin select clicks" on public.clicks for select using (public.is_admin());
-create policy "Admin modify clicks" on public.clicks for all using (public.is_admin()) with check (public.is_admin());
+create policy "Admin full access clicks" on public.clicks for all using (public.is_admin()) with check (public.is_admin());
