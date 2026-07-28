@@ -1,5 +1,5 @@
 import type { Coupon, Product, Category, Article } from '@/types'
-import { categories, featuredProducts, topDeals, coupons, blogPosts } from '@/data/demo'
+import { categories, topDeals, coupons, blogPosts } from '@/data/demo'
 
 export function getAllProducts(): Product[] {
   return [...topDeals]

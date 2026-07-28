@@ -1,5 +1,5 @@
 import { getProductById } from './data'
-import { createClient } from '@supabase/supabase-js'
+
 import type { Database } from '@/types/supabase'
 
 export async function registerClick(productId: string, request: Request) {
