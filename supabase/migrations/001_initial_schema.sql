@@ -216,6 +216,20 @@ begin
 end;
 $$;
 
+create or replace function public.protect_profile_role_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'UPDATE' and old.role <> new.role and not public.is_admin() then
+    raise exception 'Role can only be changed by an administrator';
+  end if;
+  return new;
+end;
+$$;
+
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -335,6 +349,9 @@ create trigger set_created_at_clicks
 create trigger set_profile_id_before_insert
   before insert on public.profiles
   for each row execute function public.set_profile_id();
+create trigger protect_profile_role_change
+  before update on public.profiles
+  for each row execute function public.protect_profile_role_change();
 
 alter table public.categories enable row level security;
 create policy "Public select categories" on public.categories for select using (true);
@@ -378,9 +395,9 @@ create policy "Admin full access settings" on public.settings for all using (pub
 alter table public.newsletter_subscribers enable row level security;
 create policy "Allow insert newsletter subscribers" on public.newsletter_subscribers for insert with check (
   auth.role() in ('anon', 'authenticated')
-  and new.email is not null
-  and new.email <> ''
-  and new.email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+  and email is not null
+  and email <> ''
+  and email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
 );
 create policy "Admin full access newsletter subscribers" on public.newsletter_subscribers for all using (public.is_admin()) with check (public.is_admin());
 
@@ -389,16 +406,17 @@ create policy "Self select profiles" on public.profiles for select using (auth.u
 create policy "Admin select profiles" on public.profiles for select using (public.is_admin());
 create policy "Self insert profiles" on public.profiles for insert with check (
   auth.role() = 'authenticated'
-  and new.role = 'user'
-  and new.email is not null
-  and new.email <> ''
+  and auth.uid() = id
+  and role = 'user'
+  and email is not null
+  and email <> ''
 );
 create policy "Admin insert profiles" on public.profiles for insert with check (public.is_admin());
 create policy "Self update profiles" on public.profiles for update using (auth.uid() = id) with check (
-  auth.uid() = new.id
-  and new.role = old.role
-  and new.email is not null
-  and new.email <> ''
+  auth.uid() = id
+  and role = 'user'
+  and email is not null
+  and email <> ''
 );
 create policy "Admin update profiles" on public.profiles for update using (public.is_admin()) with check (public.is_admin());
 create policy "Admin delete profiles" on public.profiles for delete using (public.is_admin());
