@@ -24,7 +24,7 @@ export async function registerClick(productId: string, request: Request) {
 
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string
     await fetch(`${supabaseUrl}/rest/v1/clicks`, {
       method: 'POST',
       headers: {
