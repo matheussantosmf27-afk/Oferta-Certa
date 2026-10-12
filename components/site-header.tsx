@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Heart, Menu, Search, User } from 'lucide-react'
 import { getCategories } from '@/services/catalog'
 import { getCurrentUser } from '@/lib/auth'
+import { CartLink } from '@/components/cart/cart-link'
 
 function Logo() {
   return (
@@ -52,6 +53,7 @@ export async function SiteHeader() {
             <Link href="/favoritos" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-950">
               <Heart className="h-4 w-4" aria-hidden /> Favoritos
             </Link>
+            <CartLink withLabel />
             {user ? (
               <Link href="/minha-conta" className="inline-flex max-w-[12rem] items-center gap-1.5 truncate text-sm font-medium text-slate-700 hover:text-slate-950">
                 <User className="h-4 w-4 shrink-0" aria-hidden />
@@ -63,6 +65,10 @@ export async function SiteHeader() {
               </Link>
             )}
           </nav>
+
+          <div className="md:hidden">
+            <CartLink />
+          </div>
 
           <details className="relative md:hidden">
             <summary className="flex cursor-pointer list-none items-center justify-center rounded-md border border-slate-200 p-2 text-slate-700 [&::-webkit-details-marker]:hidden">
