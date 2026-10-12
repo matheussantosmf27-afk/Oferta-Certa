@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Truck } from 'lucide-react'
 import type { Product } from '@/types'
 import { formatCurrency } from '@/lib/price'
+import { AddToCartButton } from '@/components/cart/add-to-cart-button'
 
 export function ProductCard({ product }: { product: Product }) {
   const discount = product.discount_percentage && product.discount_percentage > 0 ? product.discount_percentage : null
@@ -39,7 +40,10 @@ export function ProductCard({ product }: { product: Product }) {
           {product.old_price && discount ? (
             <p className="text-xs text-slate-500 line-through">{formatCurrency(product.old_price)}</p>
           ) : null}
-          <p className="text-lg font-bold text-slate-950">{formatCurrency(product.current_price)}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-lg font-bold text-slate-950">{formatCurrency(product.current_price)}</p>
+            <AddToCartButton productId={product.id} variant="compact" />
+          </div>
           {product.free_shipping ? (
             <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-700">
               <Truck className="h-3.5 w-3.5" aria-hidden /> Frete grátis

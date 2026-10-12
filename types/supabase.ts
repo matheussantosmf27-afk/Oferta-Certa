@@ -62,6 +62,45 @@ export type Database = {
         }
         Relationships: []
       }
+      automation_settings: {
+        Row: {
+          auto_publish_enabled: boolean
+          auto_publish_max_per_day: number
+          auto_publish_max_per_run: number
+          auto_publish_min_score: number
+          created_at: string
+          id: boolean
+          ml_matt_tool: string | null
+          ml_matt_word: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          auto_publish_enabled?: boolean
+          auto_publish_max_per_day?: number
+          auto_publish_max_per_run?: number
+          auto_publish_min_score?: number
+          created_at?: string
+          id?: boolean
+          ml_matt_tool?: string | null
+          ml_matt_word?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          auto_publish_enabled?: boolean
+          auto_publish_max_per_day?: number
+          auto_publish_max_per_run?: number
+          auto_publish_min_score?: number
+          created_at?: string
+          id?: boolean
+          ml_matt_tool?: string | null
+          ml_matt_word?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       banners: {
         Row: {
           active: boolean
@@ -100,6 +139,9 @@ export type Database = {
       }
       candidate_products: {
         Row: {
+          last_run_id: string | null
+          publish_mode: 'manual' | 'auto' | null
+          published_by: string | null
           affiliate_url: string | null
           brand: string | null
           condition: string | null
@@ -135,6 +177,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          last_run_id?: string | null
+          publish_mode?: 'manual' | 'auto' | null
+          published_by?: string | null
           affiliate_url?: string | null
           brand?: string | null
           condition?: string | null
@@ -169,6 +214,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          last_run_id?: string | null
+          publish_mode?: 'manual' | 'auto' | null
+          published_by?: string | null
           affiliate_url?: string | null
           brand?: string | null
           condition?: string | null
@@ -204,6 +252,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "candidate_products_last_run_id_fkey"
+            columns: ["last_run_id"]
+            isOneToOne: false
+            referencedRelation: "radar_runs"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "candidate_products_marketplace_id_fkey"
             columns: ["marketplace_id"]
             isOneToOne: false
@@ -228,6 +283,7 @@ export type Database = {
       }
       categories: {
         Row: {
+          ml_category_id: string | null
           created_at: string
           description: string | null
           icon: string | null
@@ -237,6 +293,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ml_category_id?: string | null
           created_at?: string
           description?: string | null
           icon?: string | null
@@ -246,6 +303,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ml_category_id?: string | null
           created_at?: string
           description?: string | null
           icon?: string | null
@@ -487,6 +545,13 @@ export type Database = {
       }
       products: {
         Row: {
+          inactive_reason: string | null
+          missing_offer_count: number
+          offer_checked_at: string | null
+          publish_mode: 'manual' | 'auto'
+          published_at: string | null
+          published_by: string | null
+          published_run_id: string | null
           affiliate_url: string
           best_value: boolean
           brand: string
@@ -519,6 +584,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          inactive_reason?: string | null
+          missing_offer_count?: number
+          offer_checked_at?: string | null
+          publish_mode?: 'manual' | 'auto'
+          published_at?: string | null
+          published_by?: string | null
+          published_run_id?: string | null
           affiliate_url: string
           best_value?: boolean
           brand?: string
@@ -551,6 +623,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          inactive_reason?: string | null
+          missing_offer_count?: number
+          offer_checked_at?: string | null
+          publish_mode?: 'manual' | 'auto'
+          published_at?: string | null
+          published_by?: string | null
+          published_run_id?: string | null
           affiliate_url?: string
           best_value?: boolean
           brand?: string
@@ -602,6 +681,13 @@ export type Database = {
             columns: ["marketplace_id"]
             isOneToOne: false
             referencedRelation: "marketplaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_published_run_id_fkey"
+            columns: ["published_run_id"]
+            isOneToOne: false
+            referencedRelation: "radar_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -688,6 +774,9 @@ export type Database = {
       }
       radar_runs: {
         Row: {
+          auto_published_count: number
+          expired_count: number
+          refreshed_count: number
           errors: Json
           fetched_count: number
           finished_at: string | null
@@ -700,6 +789,9 @@ export type Database = {
           upserted_count: number
         }
         Insert: {
+          auto_published_count?: number
+          expired_count?: number
+          refreshed_count?: number
           errors?: Json
           fetched_count?: number
           finished_at?: string | null
@@ -712,6 +804,9 @@ export type Database = {
           upserted_count?: number
         }
         Update: {
+          auto_published_count?: number
+          expired_count?: number
+          refreshed_count?: number
           errors?: Json
           fetched_count?: number
           finished_at?: string | null
@@ -727,6 +822,7 @@ export type Database = {
       }
       radar_search_terms: {
         Row: {
+          min_price: number | null
           active: boolean
           category_id: string | null
           created_at: string
@@ -737,6 +833,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          min_price?: number | null
           active?: boolean
           category_id?: string | null
           created_at?: string
@@ -747,6 +844,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          min_price?: number | null
           active?: boolean
           category_id?: string | null
           created_at?: string
@@ -837,6 +935,10 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_public_price_history: {
+        Args: { p_limit?: number; p_product_id: string }
+        Returns: { price: number; recorded_at: string }[]
+      }
       integration_status: {
         Args: { p_provider: string }
         Returns: { connected: boolean; expires_at: string | null; updated_at: string }[]
@@ -854,11 +956,40 @@ export type Database = {
       radar_begin_run: { Args: { p_trigger: string }; Returns: string | null }
       radar_check_secret: { Args: { p_secret: string }; Returns: boolean }
       radar_invoke: { Args: { p_trigger?: string }; Returns: number }
-      radar_upsert_candidates: {
-        Args: { p_category_id: string | null; p_items: Json; p_marketplace_slug: string; p_search_term: string }
+      publish_candidate_core: {
+        Args: {
+          p_actor: string | null
+          p_affiliate_url: string
+          p_candidate_id: string
+          p_category_id: string
+          p_mode: string
+          p_name: string | null
+          p_run_id: string | null
+        }
+        Returns: string
+      }
+      publish_candidate_internal: {
+        Args: { p_affiliate_url: string; p_candidate_id: string; p_run_id: string }
+        Returns: string
+      }
+      radar_refresh_products: {
+        Args: { p_items: Json }
+        Returns: { expired: number; refreshed: number }[]
+      }
+      radar_upsert_candidates:
+        | {
+            Args: { p_category_id: string | null; p_items: Json; p_marketplace_slug: string; p_search_term: string }
+            Returns: number
+          }
+        | {
+            Args: { p_category_id: string | null; p_items: Json; p_marketplace_slug: string; p_run_id: string; p_search_term: string }
+            Returns: number
+          }
+      slugify: { Args: { p_text: string }; Returns: string }
+      unpublish_products: {
+        Args: { p_product_ids?: string[]; p_run_id?: string }
         Returns: number
       }
-      slugify: { Args: { p_text: string }; Returns: string }
     }
     Enums: {
       article_status: "draft" | "active"

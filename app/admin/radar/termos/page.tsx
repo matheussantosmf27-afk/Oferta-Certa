@@ -22,7 +22,7 @@ export default async function SearchTermsPage({ searchParams }: { searchParams: 
 
   return (
     <div className="space-y-5">
-      <PageTitle title="Termos do Radar" description="O coletor busca cada termo ativo no Mercado Livre e envia os resultados para a fila de revisão." />
+      <PageTitle title="Termos do Radar" description="O coletor busca cada termo ativo no Mercado Livre e envia os resultados para a fila. Preço mínimo descarta acessórios baratos que não são o produto buscado; prefira termos específicos (ex.: “notebook i5 16gb”, “smart tv 50 polegadas”)." />
       <Flash ok={params.ok} erro={params.erro} />
 
       <form action={saveSearchTerm} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4">
@@ -34,6 +34,10 @@ export default async function SearchTermsPage({ searchParams }: { searchParams: 
         <label className="text-sm">
           <span className="block font-medium text-slate-700">Resultados</span>
           <input name="max_results" type="number" min={1} max={50} defaultValue={30} className="mt-1 w-20 rounded-md border border-slate-300 px-2 py-2" />
+        </label>
+        <label className="text-sm">
+          <span className="block font-medium text-slate-700">Preço mín. (R$)</span>
+          <input name="min_price" type="number" min={0} step="0.01" placeholder="opcional" className="mt-1 w-28 rounded-md border border-slate-300 px-2 py-2" />
         </label>
         <input type="hidden" name="active" value="on" />
         <SubmitButton pendingText="Salvando…">Adicionar</SubmitButton>
@@ -47,6 +51,16 @@ export default async function SearchTermsPage({ searchParams }: { searchParams: 
               <input name="term" defaultValue={term.term} required className="min-w-[10rem] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" />
               <CategorySelect value={term.category_id} />
               <input name="max_results" type="number" min={1} max={50} defaultValue={term.max_results} aria-label="Resultados" className="w-20 rounded-md border border-slate-300 px-2 py-2 text-sm" />
+              <input
+                name="min_price"
+                type="number"
+                min={0}
+                step="0.01"
+                defaultValue={term.min_price ?? ''}
+                placeholder="Preço mín."
+                aria-label="Preço mínimo (R$)"
+                className="w-28 rounded-md border border-slate-300 px-2 py-2 text-sm"
+              />
               <label className="flex items-center gap-1 text-sm text-slate-700">
                 <input type="checkbox" name="active" defaultChecked={term.active} /> Ativo
               </label>

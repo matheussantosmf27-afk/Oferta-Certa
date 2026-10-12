@@ -2,11 +2,13 @@ import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ExternalLink, Info, Star, Truck } from 'lucide-react'
-import { getProductBySlug, listProducts } from '@/services/catalog'
+import { ExternalLink, Info, ShieldCheck, Star, Truck } from 'lucide-react'
+import { getPriceHistory, getProductBySlug, listProducts } from '@/services/catalog'
 import { FavoriteButton } from '@/components/favorite-button'
 import { ShareActions } from '@/components/share-actions'
 import { ProductGrid } from '@/components/product-card'
+import { PriceHistory } from '@/components/price-history'
+import { AddToCartButton } from '@/components/cart/add-to-cart-button'
 import { formatCurrency } from '@/lib/price'
 import { getSiteUrl } from '@/lib/site'
 
@@ -30,7 +32,10 @@ export default async function ProductPage({ params }: Props) {
   const product = await getProductBySlug(slug)
   if (!product) notFound()
 
-  const related = await listProducts({ categorySlug: product.category_slug, excludeId: product.id, limit: 4 })
+  const [related, history] = await Promise.all([
+    listProducts({ categorySlug: product.category_slug, excludeId: product.id, limit: 4 }),
+    getPriceHistory(product.id),
+  ])
   const discount = product.discount_percentage && product.discount_percentage > 0 ? product.discount_percentage : null
   const productUrl = `${getSiteUrl()}/produto/${product.slug}`
   const updated = new Date(product.last_price_update)
@@ -107,14 +112,20 @@ export default async function ProductPage({ params }: Props) {
 
             <div className="mt-6 space-y-3">
               <a
-                href={`/go/${product.id}`}
+                href={`/go/${product.id}?utm_source=site&utm_medium=comprar-agora`}
                 rel="nofollow sponsored noopener"
                 target="_blank"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700"
               >
-                Ver oferta em {product.marketplace_name}
+                Comprar agora
                 <ExternalLink className="h-4 w-4" aria-hidden />
               </a>
+              <AddToCartButton productId={product.id} />
+              <p className="flex items-start gap-1.5 text-xs leading-5 text-slate-600">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" aria-hidden />
+                Pagamento e entrega pelo {product.marketplace_name}, com a proteção de compra deles. Você finaliza a compra na página do
+                vendedor.
+              </p>
               <FavoriteButton productId={product.id} />
               <ShareActions url={productUrl} />
             </div>
@@ -129,6 +140,10 @@ export default async function ProductPage({ params }: Props) {
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <PriceHistory history={history} />
       </div>
 
       {product.description ? (
