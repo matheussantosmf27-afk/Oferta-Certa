@@ -203,12 +203,15 @@ function boundedInt(formData: FormData, name: string, min: number, max: number, 
 export async function saveAutomationSettings(formData: FormData) {
   const user = await requireAdmin()
   const path = '/admin/automacao'
-  const mattWord = text(formData, 'ml_matt_word') || null
-  const mattTool = text(formData, 'ml_matt_tool') || null
   const enabled = formData.get('auto_publish_enabled') === 'on'
-  if (enabled && (!mattWord || !mattTool)) back(path, 'erro', 'Configure e valide a etiqueta de afiliado antes de ligar a publicação automática.')
 
   const supabase = await createServerClient()
+  // A etiqueta de afiliado só muda por validateAffiliateLink (link real reproduzido); aqui ela não é editável.
+  const { data: current } = await supabase.from('automation_settings').select('ml_matt_word, ml_matt_tool').maybeSingle()
+  if (enabled && (!current?.ml_matt_word || !current?.ml_matt_tool)) {
+    back(path, 'erro', 'Valide um link de afiliado real antes de ligar a publicação automática.')
+  }
+
   const { error } = await supabase
     .from('automation_settings')
     .update({
@@ -216,12 +219,10 @@ export async function saveAutomationSettings(formData: FormData) {
       auto_publish_min_score: boundedInt(formData, 'auto_publish_min_score', 0, 100, 40),
       auto_publish_max_per_run: boundedInt(formData, 'auto_publish_max_per_run', 0, 200, 20),
       auto_publish_max_per_day: boundedInt(formData, 'auto_publish_max_per_day', 0, 1000, 100),
-      ml_matt_word: mattWord,
-      ml_matt_tool: mattTool,
       updated_by: user.id,
     })
     .eq('id', true)
-  if (error) back(path, 'erro', error.code === '23514' ? 'Valores inválidos: confira a etiqueta (letras, números, _ . -).' : friendly(error))
+  if (error) back(path, 'erro', friendly(error))
   back(path, 'ok', enabled ? 'Configuração salva. Publicação automática LIGADA.' : 'Configuração salva. Publicação automática desligada.')
 }
 

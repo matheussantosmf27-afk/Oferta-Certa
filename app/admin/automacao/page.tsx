@@ -106,14 +106,12 @@ export default async function AutomationPage({ searchParams }: { searchParams: P
             />
           </label>
           <div />
-          <label className="text-sm">
-            <span className="block font-medium text-slate-700">matt_word (etiqueta)</span>
-            <input name="ml_matt_word" defaultValue={settings?.ml_matt_word ?? ''} maxLength={64} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" />
-          </label>
-          <label className="text-sm">
-            <span className="block font-medium text-slate-700">matt_tool</span>
-            <input name="ml_matt_tool" defaultValue={settings?.ml_matt_tool ?? ''} maxLength={64} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" />
-          </label>
+          <div className="text-sm sm:col-span-2">
+            <span className="block font-medium text-slate-700">Etiqueta de afiliado (definida só pela validação do link)</span>
+            <p className="mt-1 rounded-md bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700">
+              {tagReady ? `matt_word=${settings?.ml_matt_word} · matt_tool=${settings?.ml_matt_tool}` : 'não configurada'}
+            </p>
+          </div>
           <label className="flex items-center gap-2 text-sm font-medium text-slate-800 sm:col-span-2">
             <input type="checkbox" name="auto_publish_enabled" defaultChecked={settings?.auto_publish_enabled ?? false} disabled={!tagReady} />
             Ligar publicação automática {!tagReady ? '(valide a etiqueta primeiro)' : ''}
