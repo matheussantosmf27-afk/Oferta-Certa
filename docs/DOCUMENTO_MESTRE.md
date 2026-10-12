@@ -43,5 +43,11 @@ A automação fica **desligada por padrão** e só deve ser ligada depois da val
 
 ### 3.5 Situação em 12/10/2026
 
-- Os 7 produtos já publicados foram publicados manualmente com links `meli.la` (encurtados).
-- A etiqueta de afiliado ainda **não** foi validada; a publicação automática está **desligada**.
+- Os 7 primeiros produtos foram publicados manualmente com links `meli.la` (encurtados).
+- Link real fornecido pelo proprietário: `https://www.mercadolivre.com.br/social/msantos_123?matt_word=…&matt_tool=…&forceInApp=true&ref=…`.
+  - É a página social do afiliado, não a de um produto.
+  - `ref` é um token criptografado de 157 bytes, gerado pelo Mercado Livre e **impossível de reproduzir**. Pela regra 3.4, a geração automática **não é comprovadamente confiável**.
+  - A parte estável (`matt_word=msantos123`, `matt_tool=45579991`) foi salva em `automation_settings`.
+- Produto de teste publicado com o link montado (`/p/MLB38176139?matt_word=msantos123&matt_tool=45579991`), para confirmar a atribuição no painel de afiliados.
+- **Decisão do proprietário (12/10/2026):** ligar a publicação automática **já**, sem esperar a confirmação da atribuição, ciente do risco de os links sem `ref` não gerarem comissão.
+  Se o teste mostrar que o clique não foi contabilizado: desligar a automação e despublicar com "Despublicar desta coleta".
