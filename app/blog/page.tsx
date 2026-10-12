@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import { SectionHeading } from '@/components/section-heading'
-import { getArticles } from '@/services/data'
+import { getArticles } from '@/services/catalog'
 import { EmptyState } from '@/components/empty-state'
 
-export default function BlogPage() {
-  const articles = getArticles()
+export default async function BlogPage() {
+  const articles = await getArticles()
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-10 pt-8 sm:px-6 lg:px-8">

@@ -1,67 +1,100 @@
-// Removed unused imports
-import { ProductCard } from '@/components/product-card'
+import Link from 'next/link'
+import { ProductGrid } from '@/components/product-card'
 import { SectionHeading } from '@/components/section-heading'
-import { SearchHero } from '@/components/search-hero'
-import { categories, featuredProducts, topDeals } from '@/data/demo'
+import { EmptyState } from '@/components/empty-state'
+import { getCategories, listProducts } from '@/services/catalog'
 
-export default function HomePage() {
+export default async function HomePage() {
+  const [deals, featured, recent, categories] = await Promise.all([
+    listProducts({ sort: 'maior-desconto', withDiscountOnly: true, limit: 8 }),
+    listProducts({ featuredOnly: true, limit: 8 }),
+    listProducts({ sort: 'recentes', limit: 12 }),
+    getCategories(),
+  ])
+
+  const hasProducts = deals.length + featured.length + recent.length > 0
+
   return (
-    <div className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-6 lg:px-8">
-      <section className="mt-2">
-        <div className="grid gap-6 lg:grid-cols-3 lg:items-center">
-          <div className="col-span-2">
-            <div className="rounded-md bg-surface-50 p-4">
-              <h1 className="text-2xl font-semibold text-slate-900">Ofertas do dia</h1>
-              <p className="mt-1 text-sm text-slate-600">As melhores oportunidades selecionadas para você.</p>
-            </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {topDeals.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+    <div className="mx-auto max-w-7xl space-y-10 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+      <section className="rounded-lg bg-brand-700 px-6 py-8 text-white sm:px-10">
+        <h1 className="max-w-2xl text-2xl font-bold sm:text-3xl">Ofertas reais, preços conferidos.</h1>
+        <p className="mt-2 max-w-2xl text-sm text-brand-50 sm:text-base">
+          Selecionamos oportunidades nas maiores lojas do Brasil e mostramos o desconto só quando ele existe de verdade.
+        </p>
+        <form action="/buscar" method="get" role="search" className="mt-5 flex max-w-xl gap-2">
+          <label htmlFor="busca-home" className="sr-only">
+            Buscar ofertas
+          </label>
+          <input
+            id="busca-home"
+            name="q"
+            type="search"
+            placeholder="Ex.: air fryer, notebook, fone bluetooth"
+            className="min-w-0 flex-1 rounded-md border-0 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-300"
+          />
+          <button type="submit" className="rounded-md bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
+            Buscar
+          </button>
+        </form>
+      </section>
+
+      {!hasProducts ? (
+        <EmptyState
+          title="Estamos preparando as primeiras ofertas"
+          description="Nossa equipe está conferindo preços e links. Volte em breve ou explore as categorias."
+          action={
+            <Link href="/categorias" className="text-sm font-semibold text-brand-700 hover:underline">
+              Ver categorias
+            </Link>
+          }
+        />
+      ) : null}
+
+      {deals.length ? (
+        <section className="space-y-4">
+          <SectionHeading title="Ofertas do dia" description="Maiores descontos em relação ao preço anterior informado pela loja." href="/ofertas" />
+          <ProductGrid products={deals} />
+        </section>
+      ) : null}
+
+      {featured.length ? (
+        <section className="space-y-4">
+          <SectionHeading title="Destaques" description="Produtos escolhidos pela nossa curadoria." />
+          <ProductGrid products={featured} />
+        </section>
+      ) : null}
+
+      {categories.length ? (
+        <section className="space-y-4">
+          <SectionHeading title="Categorias" href="/categorias" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {categories.map((category) => (
+              <Link
+                key={category.id}
+                href={`/categoria/${category.slug}`}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-brand-300"
+              >
+                <span className="text-2xl" aria-hidden>
+                  {category.icon}
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold text-slate-900">{category.name}</span>
+                  <span className="block text-xs text-slate-500">
+                    {category.productsCount} {category.productsCount === 1 ? 'oferta' : 'ofertas'}
+                  </span>
+                </span>
+              </Link>
+            ))}
           </div>
+        </section>
+      ) : null}
 
-          <aside className="hidden lg:block">
-            <SearchHero />
-            <div className="mt-4 rounded-md bg-white p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900">Produtos selecionados</h3>
-              <div className="mt-3 space-y-3">
-                {featuredProducts.slice(0, 3).map((product) => (
-                  <div key={product.id} className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{product.name}</p>
-                      <p className="text-xs text-slate-600">{product.marketplaceName}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-slate-900">R$ {product.current_price.toFixed(2)}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </aside>
-        </div>
-      </section>
-
-      <section className="mt-10 space-y-6">
-        <SectionHeading title="Categorias em destaque" description="Explore as ofertas por categoria." />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {categories.map((category) => (
-            <article key={category.id} className="group overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-5 transition hover:-translate-y-1 hover:shadow-card">
-              <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-brand-50 text-brand-700">{category.icon}</div>
-              <h3 className="mt-4 text-lg font-semibold text-slate-950">{category.name}</h3>
-              <p className="mt-2 text-sm text-slate-500">{category.productsCount} produtos</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="mt-10 space-y-6">
-        <SectionHeading title="Ofertas em destaque" description="Aproveite descontos, cupons e oportunidades selecionadas." />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {topDeals.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      </section>
+      {recent.length ? (
+        <section className="space-y-4">
+          <SectionHeading title="Atualizados recentemente" />
+          <ProductGrid products={recent} />
+        </section>
+      ) : null}
     </div>
   )
 }

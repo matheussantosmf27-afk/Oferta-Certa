@@ -1,7 +1,21 @@
 {
-  "extends": ["next/core-web-vitals", "eslint:recommended"],
+  "extends": [
+    "next/core-web-vitals",
+    "eslint:recommended"
+  ],
   "rules": {
     "@next/next/no-html-link-for-pages": "off",
-    "no-console": ["warn", { "allow": ["warn", "error"] }]
-  }
+    "no-console": [
+      "warn",
+      {
+        "allow": [
+          "warn",
+          "error"
+        ]
+      }
+    ]
+  },
+  "ignorePatterns": [
+    "supabase/functions/radar-collect/**"
+  ]
 }

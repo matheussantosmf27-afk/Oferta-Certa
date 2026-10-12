@@ -1,41 +1,41 @@
-import { getProductById } from './data'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-import type { Database } from '@/types/supabase'
+function deviceType(userAgent: string | null): string | null {
+  if (!userAgent) return null
+  if (/bot|crawler|spider|preview/i.test(userAgent)) return 'bot'
+  if (/mobile|android|iphone|ipod/i.test(userAgent)) return 'mobile'
+  if (/ipad|tablet/i.test(userAgent)) return 'tablet'
+  return 'desktop'
+}
 
-export async function registerClick(productId: string, request: Request) {
-  const product = getProductById(productId)
-  const url = new URL(request.url)
-  const referrer = request.headers.get('referer') ?? null
-  const campaign = url.searchParams.get('utm_campaign') ?? null
-  const source = url.searchParams.get('utm_source') ?? null
-  const medium = url.searchParams.get('utm_medium') ?? null
-  const device = request.headers.get('user-agent') ?? null
-
-  const payload: Database['public']['Tables']['clicks']['Insert'] = {
-    product_id: product?.id ?? null,
-    marketplace_id: product?.marketplace_id ?? null,
-    referrer,
-    source,
-    medium,
-    campaign,
-    device_type: device,
-    created_at: new Date().toISOString(),
+/**
+ * Registra o clique NO SERVIDOR com a service role.
+ * Se a chave não estiver configurada, apenas avisa: o redirecionamento nunca é bloqueado.
+ */
+export async function registerClick(params: { productId: string; marketplaceId: string; request: Request }) {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('[clicks] SUPABASE_SERVICE_ROLE_KEY ausente; clique não registrado')
+    return
   }
 
+  const url = new URL(params.request.url)
+  const userAgent = params.request.headers.get('user-agent')
+  const type = deviceType(userAgent)
+  if (type === 'bot') return
+
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string
-    await fetch(`${supabaseUrl}/rest/v1/clicks`, {
-      method: 'POST',
-      headers: {
-        apikey: supabaseKey,
-        Authorization: `Bearer ${supabaseKey}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      },
-      body: JSON.stringify(payload),
+    const supabase = createAdminClient()
+    const { error } = await supabase.from('clicks').insert({
+      product_id: params.productId,
+      marketplace_id: params.marketplaceId,
+      referrer: params.request.headers.get('referer')?.slice(0, 500) ?? null,
+      source: url.searchParams.get('utm_source')?.slice(0, 100) ?? null,
+      medium: url.searchParams.get('utm_medium')?.slice(0, 100) ?? null,
+      campaign: url.searchParams.get('utm_campaign')?.slice(0, 100) ?? null,
+      device_type: type,
     })
+    if (error) console.error('[clicks] falha ao registrar', error)
   } catch (error) {
-    console.error('Failed to register click', error)
+    console.error('[clicks] falha ao registrar', error)
   }
 }

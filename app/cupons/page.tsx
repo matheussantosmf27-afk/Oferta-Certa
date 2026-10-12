@@ -1,9 +1,10 @@
 import { SectionHeading } from '@/components/section-heading'
 import { EmptyState } from '@/components/empty-state'
-import { getCoupons } from '@/services/data'
+import { getActiveCoupons } from '@/services/catalog'
+import { formatCurrency } from '@/lib/price'
 
-export default function CouponsPage() {
-  const coupons = getCoupons()
+export default async function CouponsPage() {
+  const coupons = await getActiveCoupons()
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-10 pt-8 sm:px-6 lg:px-8">
@@ -26,7 +27,7 @@ export default function CouponsPage() {
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-3xl bg-slate-50 p-4 text-sm text-slate-700">
                   <p className="font-semibold">Desconto</p>
-                  <p>{coupon.discount_type === 'percent' ? `${coupon.discount_value}%` : `R$ ${coupon.discount_value.toFixed(2)}`}</p>
+                  <p>{coupon.discount_type === 'percent' ? `${coupon.discount_value}%` : formatCurrency(coupon.discount_value)}</p>
                 </div>
                 <div className="rounded-3xl bg-slate-50 p-4 text-sm text-slate-700">
                   <p className="font-semibold">Validade</p>

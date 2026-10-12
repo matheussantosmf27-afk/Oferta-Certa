@@ -1,36 +1,56 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { SectionHeading } from '@/components/section-heading'
-import { ProductCard } from '@/components/product-card'
-import { getCategoryBySlug, getProductsByCategory } from '@/services/data'
+import { ProductGrid } from '@/components/product-card'
 import { EmptyState } from '@/components/empty-state'
+import { SortForm } from '@/components/sort-select'
+import { getCategoryBySlug, listProducts, parseSort } from '@/services/catalog'
 
-export default async function CategoryPage(props: { params: Promise<{ slug: string }> }) {
-  const { params } = props
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ ordem?: string }> }
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
-  const category = getCategoryBySlug(slug)
-  if (!category) {
-    notFound()
+  const category = await getCategoryBySlug(slug)
+  if (!category) return { title: 'Categoria não encontrada' }
+  return {
+    title: `Ofertas de ${category.name}`,
+    description: category.description ?? `Ofertas selecionadas de ${category.name}.`,
+    alternates: { canonical: `/categoria/${category.slug}` },
   }
+}
 
-  const products = getProductsByCategory(category.id)
+export default async function CategoryPage({ params, searchParams }: Props) {
+  const { slug } = await params
+  const { ordem } = await searchParams
+  const category = await getCategoryBySlug(slug)
+  if (!category) notFound()
+
+  const sort = parseSort(ordem)
+  const products = await listProducts({ categorySlug: category.slug, sort, limit: 60 })
 
   return (
-    <div className="mx-auto max-w-7xl px-4 pb-10 pt-8 sm:px-6 lg:px-8">
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft sm:p-10">
-        <SectionHeading title={category.name} description={category.description} />
+    <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+      <nav aria-label="Trilha" className="text-sm text-slate-500">
+        <Link href="/categorias" className="hover:text-slate-800">
+          Categorias
+        </Link>{' '}
+        / <span className="text-slate-800">{category.name}</span>
+      </nav>
+      <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-950">{category.name}</h1>
+          {category.description ? <p className="mt-1 text-sm text-slate-600">{category.description}</p> : null}
+        </div>
+        {products.length ? <SortForm action={`/categoria/${category.slug}`} sort={sort} /> : null}
       </div>
 
-      <section className="mt-8">
+      <div className="mt-6">
         {products.length ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
+          <ProductGrid products={products} />
         ) : (
-          <EmptyState title="Nenhuma oferta encontrada" description="Por enquanto não há produtos nessa categoria." />
+          <EmptyState title="Nenhuma oferta nesta categoria ainda" description="Estamos conferindo novas ofertas. Volte em breve." />
         )}
-      </section>
+      </div>
     </div>
   )
 }

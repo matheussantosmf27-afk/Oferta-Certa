@@ -1,24 +1,28 @@
-import 'dotenv/config'
 import { createServerClient as createSupabaseServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { Database } from '@/types/supabase'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { getPublicSupabaseEnv } from './env'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string
-const supabaseServerKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) as string
-
-export const createServerClient = async (): Promise<SupabaseClient<Database, 'public'>> => {
+/**
+ * Cliente Supabase do usuário atual, para Server Components, Route Handlers e Server Actions.
+ * Usa SEMPRE a chave pública: as permissões vêm da sessão do usuário (cookies) e do RLS.
+ * Para operações privilegiadas use `createAdminClient` de `./admin`.
+ */
+export const createServerClient = async () => {
+  const { url, publishableKey } = getPublicSupabaseEnv()
   const nextCookies = await cookies()
 
-  return createSupabaseServerClient<Database, 'public'>(supabaseUrl, supabaseServerKey, {
+  return createSupabaseServerClient<Database>(url, publishableKey, {
     cookies: {
-      getAll: () => {
-        return nextCookies.getAll().map(({ name, value }) => ({ name, value }))
-      },
+      getAll: () => nextCookies.getAll().map(({ name, value }) => ({ name, value })),
       setAll: (cookieList) => {
-        cookieList.forEach(({ name, value, options }) => {
-          nextCookies.set({ name, value, ...options })
-        })
+        try {
+          cookieList.forEach(({ name, value, options }) => {
+            nextCookies.set({ name, value, ...options })
+          })
+        } catch {
+          // Server Components não podem gravar cookies; o middleware renova a sessão.
+        }
       },
     },
   })
