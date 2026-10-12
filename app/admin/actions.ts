@@ -6,6 +6,7 @@ import { requireAdmin } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
 import { getPublicSupabaseEnv } from '@/lib/supabase/env'
 import { slugify } from '@/lib/slug'
+import { analyzeMercadoLivreAffiliateLink, buildMercadoLivreAffiliateUrl } from '@/supabase/functions/_shared/autopublish'
 
 // Todas as ações usam o cliente da sessão: o RLS (is_admin) é a barreira final,
 // e requireAdmin() bloqueia antes mesmo de chegar ao banco.
@@ -171,6 +172,7 @@ export async function saveSearchTerm(formData: FormData) {
     term,
     category_id: text(formData, 'category_id') || null,
     max_results: maxResults,
+    min_price: optionalNumber(formData, 'min_price'),
     active: formData.get('active') === 'on',
   }
   if (!term) back('/admin/radar/termos', 'erro', 'Informe o termo de busca.')
@@ -189,6 +191,97 @@ export async function deleteSearchTerm(formData: FormData) {
   const { error } = await supabase.from('radar_search_terms').delete().eq('id', text(formData, 'id'))
   if (error) back('/admin/radar/termos', 'erro', friendly(error))
   back('/admin/radar/termos', 'ok', 'Termo excluído.')
+}
+
+/* ------------------------ Publicação automática ----------------------- */
+
+function boundedInt(formData: FormData, name: string, min: number, max: number, fallback: number): number {
+  const value = Math.round(Number(text(formData, name)))
+  return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
+}
+
+export async function saveAutomationSettings(formData: FormData) {
+  const user = await requireAdmin()
+  const path = '/admin/automacao'
+  const mattWord = text(formData, 'ml_matt_word') || null
+  const mattTool = text(formData, 'ml_matt_tool') || null
+  const enabled = formData.get('auto_publish_enabled') === 'on'
+  if (enabled && (!mattWord || !mattTool)) back(path, 'erro', 'Configure e valide a etiqueta de afiliado antes de ligar a publicação automática.')
+
+  const supabase = await createServerClient()
+  const { error } = await supabase
+    .from('automation_settings')
+    .update({
+      auto_publish_enabled: enabled,
+      auto_publish_min_score: boundedInt(formData, 'auto_publish_min_score', 0, 100, 40),
+      auto_publish_max_per_run: boundedInt(formData, 'auto_publish_max_per_run', 0, 200, 20),
+      auto_publish_max_per_day: boundedInt(formData, 'auto_publish_max_per_day', 0, 1000, 100),
+      ml_matt_word: mattWord,
+      ml_matt_tool: mattTool,
+      updated_by: user.id,
+    })
+    .eq('id', true)
+  if (error) back(path, 'erro', error.code === '23514' ? 'Valores inválidos: confira a etiqueta (letras, números, _ . -).' : friendly(error))
+  back(path, 'ok', enabled ? 'Configuração salva. Publicação automática LIGADA.' : 'Configuração salva. Publicação automática desligada.')
+}
+
+/** Desligamento imediato: a Edge Function e o banco checam o interruptor antes de cada publicação. */
+export async function disableAutoPublish() {
+  const user = await requireAdmin()
+  const supabase = await createServerClient()
+  const { error } = await supabase.from('automation_settings').update({ auto_publish_enabled: false, updated_by: user.id }).eq('id', true)
+  if (error) back('/admin/automacao', 'erro', friendly(error))
+  back('/admin/automacao', 'ok', 'Publicação automática desligada.')
+}
+
+/**
+ * Analisa um link de afiliado REAL gerado no portal (passo 4.2 b/c): só aceita o link completo com
+ * matt_word e matt_tool fixos, e confere se o construtor reproduz exatamente o mesmo link.
+ * Se tudo bater, guarda a etiqueta (sem ligar a automação).
+ */
+export async function validateAffiliateLink(formData: FormData) {
+  const user = await requireAdmin()
+  const path = '/admin/automacao'
+  const link = text(formData, 'affiliate_link')
+  const analysis = analyzeMercadoLivreAffiliateLink(link)
+  if (analysis.kind !== 'params') back(path, 'erro', analysis.reason)
+  if (analysis.extraParams.length) {
+    back(
+      path,
+      'erro',
+      `O link tem parâmetros além de matt_word e matt_tool (${analysis.extraParams.join(', ')}). Gere outro link para o mesmo produto e compare: se algum valor mudar, a geração automática não é confiável.`
+    )
+  }
+  const rebuilt = buildMercadoLivreAffiliateUrl(analysis.productUrl, analysis.tag)
+  if (rebuilt !== new URL(link).toString()) back(path, 'erro', 'O link montado automaticamente não ficou idêntico ao link real. Mantenha o fluxo manual.')
+
+  const supabase = await createServerClient()
+  const { error } = await supabase
+    .from('automation_settings')
+    .update({ ml_matt_word: analysis.tag.mattWord, ml_matt_tool: analysis.tag.mattTool, updated_by: user.id })
+    .eq('id', true)
+  if (error) back(path, 'erro', friendly(error))
+  back(path, 'ok', 'Link completo reconhecido e reproduzido parâmetro a parâmetro. Etiqueta salva; a automação continua desligada até você ligar.')
+}
+
+export async function unpublishProduct(formData: FormData) {
+  await requireAdmin()
+  const path = returnTo(formData, '/admin/produtos')
+  const supabase = await createServerClient()
+  const { data, error } = await supabase.rpc('unpublish_products', { p_product_ids: [text(formData, 'product_id')] })
+  if (error) back(path, 'erro', friendly(error))
+  revalidatePath('/', 'layout')
+  back(path, 'ok', data ? 'Produto despublicado (inativo).' : 'O produto já não estava publicado.')
+}
+
+export async function unpublishRun(formData: FormData) {
+  await requireAdmin()
+  const path = returnTo(formData, '/admin/automacao')
+  const supabase = await createServerClient()
+  const { data, error } = await supabase.rpc('unpublish_products', { p_run_id: text(formData, 'run_id') })
+  if (error) back(path, 'erro', friendly(error))
+  revalidatePath('/', 'layout')
+  back(path, 'ok', `${data ?? 0} produto(s) publicados automaticamente nessa execução foram despublicados.`)
 }
 
 /* ----------------------------- Categorias ---------------------------- */

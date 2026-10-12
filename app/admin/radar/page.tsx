@@ -281,7 +281,7 @@ export default async function RadarPage({ searchParams }: { searchParams: Promis
 
                   {candidate.status === 'approved' && candidate.product_id ? (
                     <p className="text-sm text-slate-700">
-                      Publicado ·{' '}
+                      Publicado {candidate.publish_mode === 'auto' ? 'automaticamente' : 'manualmente'} ·{' '}
                       <Link href={`/admin/produtos/${candidate.product_id}`} className="font-medium text-brand-700 hover:underline">
                         editar produto
                       </Link>

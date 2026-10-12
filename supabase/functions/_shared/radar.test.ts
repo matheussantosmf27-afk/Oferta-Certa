@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   backoffDelay,
+  belowMinPrice,
+  bestSellerBonus,
+  parseHighlights,
   mapWithConcurrency,
   mercadoLivreProductUrl,
   normalizeMercadoLivreCatalogProduct,
@@ -116,5 +119,43 @@ describe('utilitários', () => {
     })
     expect(out).toEqual([2, 4, 6, 8, 10, 12])
     expect(peak).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('mais vendidos e preço mínimo', () => {
+  const base = normalizeMercadoLivreCatalogProduct(product, offers(offer(100, { original_price: 150 })))!
+
+  it('dá bônus por posição e registra no detalhamento', () => {
+    expect([1, 3, 4, 10, 11, 50].map(bestSellerBonus)).toEqual([12, 12, 8, 8, 5, 5])
+    expect(bestSellerBonus(null)).toBe(0)
+    expect(bestSellerBonus(0)).toBe(0)
+    const plain = scoreCandidate(base)
+    const top = scoreCandidate(base, { bestSellerPosition: 2 })
+    expect(top.breakdown.mais_vendido).toBe(12)
+    expect(plain.breakdown.mais_vendido).toBeUndefined()
+    expect(top.score).toBeCloseTo(plain.score + 12, 1)
+  })
+
+  it('lê só produtos de catálogo da lista de destaques', () => {
+    const body = {
+      content: [
+        { id: 'MLB1', position: 1, type: 'PRODUCT' },
+        { id: 'MLBU2', position: 2, type: 'USER_PRODUCT' },
+        { id: 'MLB3', position: 3, type: 'ITEM' },
+        { id: 'MLB4', position: 4, type: 'PRODUCT' },
+      ],
+    }
+    expect(parseHighlights(body)).toEqual([
+      { id: 'MLB1', position: 1 },
+      { id: 'MLB4', position: 4 },
+    ])
+    expect(parseHighlights(null)).toEqual([])
+  })
+
+  it('filtra preço abaixo do mínimo do termo', () => {
+    expect(belowMinPrice(60, 1200)).toBe(true)
+    expect(belowMinPrice(1500, 1200)).toBe(false)
+    expect(belowMinPrice(60, null)).toBe(false)
+    expect(belowMinPrice(60, 0)).toBe(false)
   })
 })

@@ -4,11 +4,20 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import {
   backoffDelay,
+  belowMinPrice,
   mapWithConcurrency,
   normalizeMercadoLivreCatalogProduct,
+  parseHighlights,
   scoreCandidate,
   shouldRetry,
 } from '../_shared/radar.ts'
+import {
+  affiliateTagFrom,
+  buildMercadoLivreAffiliateUrl,
+  selectAutoPublishBatch,
+  type AutoPublishCandidate,
+  type AutoPublishSettings,
+} from '../_shared/autopublish.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -21,6 +30,9 @@ const ML_AUTH = 'https://auth.mercadolivre.com.br/authorization'
 const MARKETPLACE_SLUG = 'mercado-livre'
 const MAX_TERMS_PER_RUN = 12
 const MAX_PRODUCTS_PER_TERM = 20
+const MAX_BEST_SELLERS_PER_CATEGORY = 10
+const MAX_REFRESH_PER_RUN = 60
+const BEST_SELLERS_TERM = 'mais vendidos'
 const TOKEN_PROVIDER = 'mercadolivre'
 const STATE_PROVIDER = 'mercadolivre_oauth_state'
 
@@ -150,38 +162,171 @@ async function mlGet(db: Admin, path: string): Promise<Record<string, unknown> |
   throw new Error('Mercado Livre não respondeu após várias tentativas')
 }
 
+type Dict = Record<string, unknown>
+/** Posição de cada produto nas listas de mais vendidos desta coleta (id do catálogo → posição). */
+type BestSellers = Map<string, number>
+
+/** Consulta as ofertas de um produto do catálogo e monta o candidato pontuado (null = sem vendedor). */
+async function buildCandidate(db: Admin, product: Dict, bestSellers: BestSellers) {
+  const id = typeof product.id === 'string' ? product.id : ''
+  if (!id) return null
+  const offers = await mlGet(db, `/products/${encodeURIComponent(id)}/items?limit=20`)
+  const candidate = normalizeMercadoLivreCatalogProduct(product, offers)
+  if (!candidate) return null
+  const { score, breakdown, flags } = scoreCandidate(candidate, { bestSellerPosition: bestSellers.get(id) ?? null })
+  const results = Array.isArray(offers?.results) ? (offers.results as Dict[]) : []
+  const best = results.find((offer) => offer.price === candidate.price)
+  return {
+    ...candidate,
+    score,
+    score_breakdown: { ...breakdown, ...(flags.length ? { _alertas: flags } : {}) },
+    raw: {
+      offers_count: candidate.offers_count,
+      best_item_id: best?.item_id ?? null,
+      seller_id: best?.seller_id ?? null,
+      category_id: best?.category_id ?? null,
+      best_seller_position: bestSellers.get(id) ?? null,
+    },
+  }
+}
+
 /**
  * Busca no CATÁLOGO do Mercado Livre (a busca de anúncios /sites/MLB/search exige
  * permissão especial) e, para cada produto, consulta as ofertas dos vendedores.
+ * Descarta itens abaixo do preço mínimo do termo (acessórios que não são o produto buscado).
  */
-async function searchCatalog(db: Admin, term: string, limit: number) {
+async function searchCatalog(db: Admin, term: string, limit: number, minPrice: number | null, bestSellers: BestSellers) {
   const params = new URLSearchParams({ status: 'active', site_id: 'MLB', q: term, limit: String(Math.min(MAX_PRODUCTS_PER_TERM, limit)) })
   const search = await mlGet(db, `/products/search?${params}`)
-  const products = Array.isArray(search?.results) ? (search.results as Record<string, unknown>[]) : []
+  const products = Array.isArray(search?.results) ? (search.results as Dict[]) : []
 
-  const candidates = await mapWithConcurrency(products, 4, async (product) => {
-    const id = typeof product.id === 'string' ? product.id : ''
-    if (!id) return null
-    const offers = await mlGet(db, `/products/${encodeURIComponent(id)}/items?limit=20`)
-    const candidate = normalizeMercadoLivreCatalogProduct(product, offers)
-    if (!candidate) return null
-    const { score, breakdown, flags } = scoreCandidate(candidate)
-    const results = Array.isArray(offers?.results) ? (offers.results as Record<string, unknown>[]) : []
-    const best = results.find((offer) => offer.price === candidate.price)
-    return {
-      ...candidate,
-      score,
-      score_breakdown: { ...breakdown, ...(flags.length ? { _alertas: flags } : {}) },
-      raw: {
-        offers_count: candidate.offers_count,
-        best_item_id: best?.item_id ?? null,
-        seller_id: best?.seller_id ?? null,
-        category_id: best?.category_id ?? null,
-      },
+  const candidates = await mapWithConcurrency(products, 4, (product) => buildCandidate(db, product, bestSellers))
+  const valid = candidates.filter((item) => item !== null)
+  const items = valid.filter((item) => !belowMinPrice(item.price, minPrice))
+  return { found: products.length, items, belowMin: valid.length - items.length }
+}
+
+/** Lê as listas de mais vendidos das categorias mapeadas (categories.ml_category_id). */
+async function loadBestSellers(db: Admin) {
+  const { data: categories, error } = await db
+    .from('categories')
+    .select('id, name, ml_category_id')
+    .not('ml_category_id', 'is', null)
+  if (error) throw error
+
+  const positions: BestSellers = new Map()
+  const lists: { categoryId: string; name: string; ids: string[] }[] = []
+  const errors: { term: string; message: string }[] = []
+  for (const category of categories ?? []) {
+    try {
+      const body = await mlGet(db, `/highlights/MLB/category/${encodeURIComponent(category.ml_category_id as string)}`)
+      const entries = parseHighlights(body).slice(0, MAX_BEST_SELLERS_PER_CATEGORY)
+      for (const entry of entries) {
+        if (!positions.has(entry.id) || (positions.get(entry.id) as number) > entry.position) positions.set(entry.id, entry.position)
+      }
+      lists.push({ categoryId: category.id, name: category.name, ids: entries.map((entry) => entry.id) })
+    } catch (error) {
+      errors.push({ term: `mais vendidos: ${category.name}`, message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  return { positions, lists, errors }
+}
+
+/**
+ * Reconsulta as ofertas dos produtos publicados que NÃO apareceram nesta coleta:
+ * atualiza o preço ou, sem vendedor (404 / nenhuma oferta válida), conta uma ausência.
+ * Duas ausências seguidas tornam o produto inativo (no banco, radar_refresh_products).
+ */
+async function refreshPublished(db: Admin, seen: Set<string>) {
+  const { data: marketplace } = await db.from('marketplaces').select('id').eq('slug', MARKETPLACE_SLUG).maybeSingle()
+  if (!marketplace) return { refreshed: 0, expired: 0 }
+  const { data: products, error } = await db
+    .from('products')
+    .select('id, name, external_id')
+    .eq('status', 'active')
+    .eq('marketplace_id', marketplace.id)
+    .not('external_id', 'is', null)
+    .order('offer_checked_at', { ascending: true, nullsFirst: true })
+    .limit(MAX_REFRESH_PER_RUN + seen.size)
+  if (error) throw error
+
+  const pending = (products ?? []).filter((product) => !seen.has(product.external_id as string)).slice(0, MAX_REFRESH_PER_RUN)
+  const results = await mapWithConcurrency(pending, 4, async (product) => {
+    try {
+      const offers = await mlGet(db, `/products/${encodeURIComponent(product.external_id as string)}/items?limit=20`)
+      const candidate = normalizeMercadoLivreCatalogProduct({ id: product.external_id, name: product.name }, offers)
+      return candidate
+        ? { product_id: product.id, available: true, price: candidate.price, original_price: candidate.original_price, free_shipping: candidate.free_shipping }
+        : { product_id: product.id, available: false }
+    } catch (error) {
+      // Falha de rede/API não conta como "sem vendedor".
+      log('warn', 'reconsulta falhou', { productId: product.id, message: error instanceof Error ? error.message : String(error) })
+      return null
     }
   })
+  const items = results.filter((item) => item !== null)
+  if (!items.length) return { refreshed: 0, expired: 0 }
+  const { data, error: refreshError } = await db.rpc('radar_refresh_products', { p_items: items }).maybeSingle()
+  if (refreshError) throw refreshError
+  const row = data as { refreshed?: number; expired?: number } | null
+  return { refreshed: row?.refreshed ?? 0, expired: row?.expired ?? 0 }
+}
 
-  return { found: products.length, items: candidates.filter((item) => item !== null) }
+/** Início do dia em São Paulo (sem horário de verão desde 2019: UTC−3). */
+function startOfTodaySaoPaulo(): string {
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+  return new Date(`${day}T00:00:00-03:00`).toISOString()
+}
+
+/**
+ * Publicação automática (desligada por padrão). Só candidatos elegíveis desta coleta, com o link
+ * de afiliado montado a partir da etiqueta configurada. O banco reconfere tudo em publish_candidate_internal.
+ */
+async function autoPublish(db: Admin, runId: string) {
+  const { data: settings, error } = await db.from('automation_settings').select('*').maybeSingle()
+  if (error) throw error
+  if (!settings?.auto_publish_enabled) return { published: 0, errors: [] as { term: string; message: string }[] }
+  const config = settings as AutoPublishSettings
+  const tag = affiliateTagFrom(config)
+  if (!tag) return { published: 0, errors: [{ term: 'publicação automática', message: 'Etiqueta de afiliado não configurada.' }] }
+
+  const { count: publishedToday } = await db
+    .from('products')
+    .select('id', { count: 'exact', head: true })
+    .eq('publish_mode', 'auto')
+    .gte('published_at', startOfTodaySaoPaulo())
+
+  const { data: candidates, error: listError } = await db
+    .from('candidate_products')
+    .select('id, status, is_demo, score, score_breakdown, image_url, price, suggested_category_id, last_run_id, product_id, permalink')
+    .eq('status', 'pending')
+    .eq('is_demo', false)
+    .eq('last_run_id', runId)
+    .gt('score', config.auto_publish_min_score)
+    .order('score', { ascending: false })
+    .limit(200)
+  if (listError) throw listError
+
+  const batch = selectAutoPublishBatch((candidates ?? []) as AutoPublishCandidate[], config, runId, publishedToday ?? 0)
+  const errors: { term: string; message: string }[] = []
+  let published = 0
+  for (const candidate of batch) {
+    const url = buildMercadoLivreAffiliateUrl(candidate.permalink, tag)
+    if (!url) continue
+    const { error: publishError } = await db.rpc('publish_candidate_internal', {
+      p_candidate_id: candidate.id,
+      p_affiliate_url: url,
+      p_run_id: runId,
+    })
+    if (publishError) {
+      errors.push({ term: 'publicação automática', message: publishError.message })
+      // Interruptor desligado ou limite atingido: para na hora.
+      if (/desligada|Limite/i.test(publishError.message)) break
+      continue
+    }
+    published++
+  }
+  return { published, errors }
 }
 
 /* -------------------------------- Coleta --------------------------------- */
@@ -195,31 +340,45 @@ async function collect(db: Admin, trigger: string) {
   let fetched = 0
   let upserted = 0
   let termsCount = 0
+  let belowMin = 0
+  let refreshed = 0
+  let expired = 0
+  let autoPublished = 0
   let fatal: string | null = null
 
   try {
     const { data: terms, error } = await db
       .from('radar_search_terms')
-      .select('id, term, category_id, max_results')
+      .select('id, term, category_id, max_results, min_price')
       .eq('active', true)
       .order('last_run_at', { ascending: true, nullsFirst: true })
       .limit(MAX_TERMS_PER_RUN)
     if (error) throw error
     termsCount = terms?.length ?? 0
 
+    const bestSellers = await loadBestSellers(db)
+    errors.push(...bestSellers.errors)
+    const seen = new Set<string>()
+
+    const save = async (term: string, categoryId: string | null, items: { external_id: string }[]) => {
+      const { data: count, error: upsertError } = await db.rpc('radar_upsert_candidates', {
+        p_marketplace_slug: MARKETPLACE_SLUG,
+        p_search_term: term,
+        p_category_id: categoryId,
+        p_items: items,
+        p_run_id: runId,
+      })
+      if (upsertError) throw upsertError
+      for (const item of items) seen.add(item.external_id)
+      upserted += count ?? 0
+    }
+
     for (const term of terms ?? []) {
       try {
-        const { found, items } = await searchCatalog(db, term.term, term.max_results)
+        const { found, items, belowMin: discarded } = await searchCatalog(db, term.term, term.max_results, term.min_price, bestSellers.positions)
         fetched += found
-
-        const { data: count, error: upsertError } = await db.rpc('radar_upsert_candidates', {
-          p_marketplace_slug: MARKETPLACE_SLUG,
-          p_search_term: term.term,
-          p_category_id: term.category_id,
-          p_items: items,
-        })
-        if (upsertError) throw upsertError
-        upserted += count ?? 0
+        belowMin += discarded
+        await save(term.term, term.category_id, items)
         await db.from('radar_search_terms').update({ last_run_at: new Date().toISOString() }).eq('id', term.id)
       } catch (termError) {
         const message = termError instanceof Error ? termError.message : String(termError)
@@ -233,11 +392,57 @@ async function collect(db: Admin, trigger: string) {
       }
       await sleep(400) // respeita limites de requisição
     }
+
+    // Mais vendidos de cada categoria que ainda não vieram pelos termos.
+    if (!fatal) {
+      for (const list of bestSellers.lists) {
+        try {
+          const missing = list.ids.filter((id) => !seen.has(id))
+          const items = (
+            await mapWithConcurrency(missing, 4, async (id) => {
+              const product = await mlGet(db, `/products/${encodeURIComponent(id)}`)
+              return product ? buildCandidate(db, product, bestSellers.positions) : null
+            })
+          ).filter((item) => item !== null)
+          fetched += missing.length
+          await save(BEST_SELLERS_TERM, list.categoryId, items)
+        } catch (listError) {
+          errors.push({ term: `mais vendidos: ${list.name}`, message: listError instanceof Error ? listError.message : String(listError) })
+        }
+        await sleep(200)
+      }
+    }
+
+    if (!fatal) {
+      try {
+        const result = await refreshPublished(db, seen)
+        refreshed = result.refreshed
+        expired = result.expired
+      } catch (refreshError) {
+        errors.push({ term: 'acompanhamento de preço', message: refreshError instanceof Error ? refreshError.message : String(refreshError) })
+      }
+
+      try {
+        const result = await autoPublish(db, runId)
+        autoPublished = result.published
+        errors.push(...result.errors)
+      } catch (publishError) {
+        errors.push({ term: 'publicação automática', message: publishError instanceof Error ? publishError.message : String(publishError) })
+      }
+    }
   } catch (runError) {
     fatal = runError instanceof Error ? runError.message : String(runError)
   } finally {
     const status = fatal ? 'error' : errors.length ? (upserted > 0 ? 'partial' : 'error') : 'success'
-    const message = fatal ?? (errors.length ? `${errors.length} termo(s) com erro` : `${upserted} candidatos atualizados`)
+    const summary = [
+      `${upserted} candidatos atualizados`,
+      belowMin ? `${belowMin} abaixo do preço mínimo` : '',
+      refreshed ? `${refreshed} preços reconsultados` : '',
+      expired ? `${expired} inativados sem vendedor` : '',
+      autoPublished ? `${autoPublished} publicados automaticamente` : '',
+      errors.length ? `${errors.length} erro(s)` : '',
+    ].filter(Boolean).join(', ')
+    const message = fatal ?? summary
     await db
       .from('radar_runs')
       .update({
@@ -246,16 +451,21 @@ async function collect(db: Admin, trigger: string) {
         terms_count: termsCount,
         fetched_count: fetched,
         upserted_count: upserted,
+        auto_published_count: autoPublished,
+        refreshed_count: refreshed,
+        expired_count: expired,
         errors,
         message,
       })
       .eq('id', runId)
-    log(status === 'success' ? 'info' : 'warn', 'coleta finalizada', { runId, status, fetched, upserted, errors: errors.length })
+    log(status === 'success' ? 'info' : 'warn', 'coleta finalizada', {
+      runId, status, fetched, upserted, belowMin, refreshed, expired, autoPublished, errors: errors.length,
+    })
   }
 
   const failed = Boolean(fatal) || (errors.length > 0 && upserted === 0)
   return json(
-    { message: fatal ?? `Coleta concluída: ${upserted} candidatos atualizados${errors.length ? `, ${errors.length} termo(s) com erro` : ''}.` },
+    { message: fatal ?? `Coleta concluída: ${upserted} candidatos atualizados${autoPublished ? `, ${autoPublished} publicados automaticamente` : ''}${errors.length ? `, ${errors.length} erro(s)` : ''}.` },
     failed ? 502 : 200
   )
 }

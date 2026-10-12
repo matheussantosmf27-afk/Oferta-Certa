@@ -101,7 +101,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
  * - descontos acima de 70% são tratados como suspeitos (sem pontos);
  * - sem avaliações, nada é presumido.
  */
-export function scoreCandidate(candidate: NormalizedCandidate): ScoreResult {
+export function scoreCandidate(candidate: NormalizedCandidate, options: { bestSellerPosition?: number | null } = {}): ScoreResult {
   const breakdown: Record<string, number> = {}
   const flags: string[] = []
 
@@ -132,6 +132,9 @@ export function scoreCandidate(candidate: NormalizedCandidate): ScoreResult {
     breakdown.vendedores = clamp((Math.log10(candidate.offers_count) / Math.log10(30)) * 10, 0, 10)
   }
 
+  const bonus = bestSellerBonus(options.bestSellerPosition)
+  if (bonus) breakdown.mais_vendido = bonus
+
   breakdown.frete_gratis = candidate.free_shipping ? 10 : 0
   breakdown.condicao = candidate.condition === 'new' ? 5 : candidate.condition === 'used' ? -15 : 0
   if (!candidate.image_url) {
@@ -142,6 +145,31 @@ export function scoreCandidate(candidate: NormalizedCandidate): ScoreResult {
   const total = Object.values(breakdown).reduce((sum, value) => sum + value, 0)
   const rounded = Object.fromEntries(Object.entries(breakdown).map(([key, value]) => [key, Math.round(value * 10) / 10]))
   return { score: Math.round(clamp(total, 0, 100) * 10) / 10, breakdown: rounded, flags }
+}
+
+/**
+ * Bônus para produtos da lista de mais vendidos da categoria (/highlights/MLB/category/{id}).
+ * Top 3: 12 pts; até o 10º: 8 pts; demais posições da lista: 5 pts.
+ */
+export function bestSellerBonus(position: number | null | undefined): number {
+  if (!position || !Number.isFinite(position) || position < 1) return 0
+  if (position <= 3) return 12
+  if (position <= 10) return 8
+  return 5
+}
+
+/** Preço mínimo configurado no termo: abaixo dele, provavelmente é acessório e não o produto buscado. */
+export function belowMinPrice(price: number, minPrice: number | null | undefined): boolean {
+  return typeof minPrice === 'number' && minPrice > 0 && price < minPrice
+}
+
+/** Extrai os IDs de produto de catálogo (tipo PRODUCT) de uma resposta de /highlights, com a posição. */
+export function parseHighlights(body: unknown): { id: string; position: number }[] {
+  if (!isDict(body) || !Array.isArray(body.content)) return []
+  return body.content
+    .filter(isDict)
+    .filter((entry) => entry.type === 'PRODUCT' && typeof entry.id === 'string' && ML_PRODUCT_ID.test(entry.id))
+    .map((entry, index) => ({ id: entry.id as string, position: num(entry.position) ?? index + 1 }))
 }
 
 /** Espera exponencial com teto: 1s, 2s, 4s… */

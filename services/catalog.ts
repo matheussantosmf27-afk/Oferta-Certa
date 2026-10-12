@@ -84,6 +84,18 @@ export const getProductBySlug = cache(async (slug: string): Promise<Product | nu
   return data
 })
 
+/** Histórico público de preço (só produtos ativos), do mais recente ao mais antigo. */
+export async function getPriceHistory(productId: string): Promise<{ price: number; recorded_at: string }[]> {
+  if (!isUuid(productId)) return []
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('get_public_price_history', { p_product_id: productId, p_limit: 90 })
+  if (error) {
+    logError('getPriceHistory', error)
+    return []
+  }
+  return data ?? []
+}
+
 export async function getProductsByIds(ids: string[]): Promise<Product[]> {
   const valid = Array.from(new Set(ids.filter(isUuid))).slice(0, 100)
   if (!valid.length) return []

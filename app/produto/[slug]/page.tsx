@@ -3,10 +3,11 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ExternalLink, Info, Star, Truck } from 'lucide-react'
-import { getProductBySlug, listProducts } from '@/services/catalog'
+import { getPriceHistory, getProductBySlug, listProducts } from '@/services/catalog'
 import { FavoriteButton } from '@/components/favorite-button'
 import { ShareActions } from '@/components/share-actions'
 import { ProductGrid } from '@/components/product-card'
+import { PriceHistory } from '@/components/price-history'
 import { formatCurrency } from '@/lib/price'
 import { getSiteUrl } from '@/lib/site'
 
@@ -30,7 +31,10 @@ export default async function ProductPage({ params }: Props) {
   const product = await getProductBySlug(slug)
   if (!product) notFound()
 
-  const related = await listProducts({ categorySlug: product.category_slug, excludeId: product.id, limit: 4 })
+  const [related, history] = await Promise.all([
+    listProducts({ categorySlug: product.category_slug, excludeId: product.id, limit: 4 }),
+    getPriceHistory(product.id),
+  ])
   const discount = product.discount_percentage && product.discount_percentage > 0 ? product.discount_percentage : null
   const productUrl = `${getSiteUrl()}/produto/${product.slug}`
   const updated = new Date(product.last_price_update)
@@ -129,6 +133,10 @@ export default async function ProductPage({ params }: Props) {
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <PriceHistory history={history} />
       </div>
 
       {product.description ? (
