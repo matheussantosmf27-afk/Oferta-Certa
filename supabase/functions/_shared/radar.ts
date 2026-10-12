@@ -12,6 +12,7 @@ export interface NormalizedCandidate {
   rating: number | null
   reviews_count: number | null
   sold_quantity: number | null
+  offers_count: number | null
   condition: string | null
   brand: string | null
 }
@@ -28,46 +29,67 @@ const isDict = (value: unknown): value is Dict => typeof value === 'object' && v
 const num = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
 const str = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null)
 
-function httpsImage(url: string | null): string | null {
-  if (!url) return null
-  const secure = url.replace(/^http:\/\//i, 'https://')
-  // Miniaturas do ML terminam em -I.jpg; -O.jpg é a versão maior.
-  return secure.replace(/-I\.(jpg|jpeg|webp|png)$/i, '-O.$1')
+const ML_PRODUCT_ID = /^MLB\d+$/
+
+/** Página oficial do produto no catálogo do Mercado Livre (de onde se gera o link de afiliado). */
+export function mercadoLivreProductUrl(productId: string): string {
+  return `https://www.mercadolivre.com.br/p/${productId}`
 }
 
-/** Converte um item da busca do Mercado Livre. Retorna null se faltar dado essencial. */
-export function normalizeMercadoLivreItem(item: unknown): NormalizedCandidate | null {
-  if (!isDict(item)) return null
-  const id = str(item.id)
-  const title = str(item.title)
-  const permalink = str(item.permalink)
-  const price = num(item.price)
-  if (!id || !title || !permalink || price === null || price <= 0) return null
-  if (!/^https:\/\//i.test(permalink)) return null
+function httpsImage(url: string | null): string | null {
+  if (!url) return null
+  return url.replace(/^http:\/\//i, 'https://')
+}
 
-  const originalRaw = num(item.original_price)
+function brandFrom(attributes: unknown): string | null {
+  if (!Array.isArray(attributes)) return null
+  const brand = attributes.find((attr) => isDict(attr) && attr.id === 'BRAND')
+  return isDict(brand) ? str(brand.value_name) : null
+}
+
+/**
+ * Converte um produto do catálogo (resultado de /products/search) e suas ofertas
+ * (/products/{id}/items) em candidato. Usa a oferta mais barata entre os vendedores.
+ * Retorna null se não houver vendedor ativo ou faltar dado essencial.
+ */
+export function normalizeMercadoLivreCatalogProduct(product: unknown, offers: unknown): NormalizedCandidate | null {
+  if (!isDict(product)) return null
+  const id = str(product.id)
+  const title = str(product.name)
+  if (!id || !ML_PRODUCT_ID.test(id) || !title) return null
+
+  const results = isDict(offers) && Array.isArray(offers.results) ? offers.results.filter(isDict) : []
+  const valid = results
+    .map((offer) => ({ offer, price: num(offer.price) }))
+    .filter((entry): entry is { offer: Dict; price: number } => entry.price !== null && entry.price > 0)
+    .filter(({ offer }) => (str(offer.currency_id) ?? 'BRL') === 'BRL')
+    .sort((a, b) => a.price - b.price)
+  if (!valid.length) return null
+
+  const best = valid[0]
+  const originalRaw = num(best.offer.original_price)
   // Preço anterior só vale se for MAIOR que o atual; caso contrário não há desconto.
-  const original_price = originalRaw !== null && originalRaw > price ? originalRaw : null
+  const original_price = originalRaw !== null && originalRaw > best.price ? originalRaw : null
+  const shipping = isDict(best.offer.shipping) ? best.offer.shipping : {}
 
-  const shipping = isDict(item.shipping) ? item.shipping : {}
-  const attributes = Array.isArray(item.attributes) ? item.attributes : []
-  const brandAttr = attributes.find((attr) => isDict(attr) && attr.id === 'BRAND')
-  const brand = isDict(brandAttr) ? str(brandAttr.value_name) : null
+  const pictures = Array.isArray(product.pictures) ? product.pictures.filter(isDict) : []
+  const total = isDict(offers) && isDict(offers.paging) ? num(offers.paging.total) : null
 
   return {
     external_id: id,
     title: title.slice(0, 300),
-    permalink,
-    image_url: httpsImage(str(item.thumbnail)),
-    price,
+    permalink: mercadoLivreProductUrl(id),
+    image_url: httpsImage(pictures.length ? str(pictures[0].url) : null),
+    price: best.price,
     original_price,
-    currency: str(item.currency_id) ?? 'BRL',
+    currency: 'BRL',
     free_shipping: shipping.free_shipping === true,
-    rating: null, // a busca não traz avaliações; não inventamos
+    rating: null, // a API não traz avaliações aqui; não inventamos
     reviews_count: null,
-    sold_quantity: num(item.sold_quantity),
-    condition: str(item.condition),
-    brand,
+    sold_quantity: null,
+    offers_count: total ?? valid.length,
+    condition: str(best.offer.condition),
+    brand: brandFrom(product.attributes),
   }
 }
 
@@ -105,6 +127,10 @@ export function scoreCandidate(candidate: NormalizedCandidate): ScoreResult {
   if (candidate.sold_quantity) {
     breakdown.vendas = clamp((Math.log10(candidate.sold_quantity + 1) / 4) * 15, 0, 15)
   }
+  if (candidate.offers_count && candidate.offers_count > 1) {
+    // Vários vendedores = produto procurado e preço mais competitivo.
+    breakdown.vendedores = clamp((Math.log10(candidate.offers_count) / Math.log10(30)) * 10, 0, 10)
+  }
 
   breakdown.frete_gratis = candidate.free_shipping ? 10 : 0
   breakdown.condicao = candidate.condition === 'new' ? 5 : candidate.condition === 'used' ? -15 : 0
@@ -125,4 +151,18 @@ export function backoffDelay(attempt: number, baseMs = 1000, maxMs = 8000): numb
 
 export function shouldRetry(status: number): boolean {
   return status === 429 || status >= 500
+}
+
+/** Executa tarefas assíncronas com limite de simultaneidade, preservando a ordem. */
+export async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) {
+      const index = next++
+      results[index] = await task(items[index])
+    }
+  })
+  await Promise.all(workers)
+  return results
 }

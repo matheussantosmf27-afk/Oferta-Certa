@@ -2,7 +2,13 @@
 // Chamada pelo pg_cron (cabeçalho x-radar-secret) ou por um admin no painel (JWT do usuário).
 // Também conduz a conexão OAuth com o Mercado Livre (oauth_start / oauth_callback).
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
-import { backoffDelay, normalizeMercadoLivreItem, scoreCandidate, shouldRetry } from '../_shared/radar.ts'
+import {
+  backoffDelay,
+  mapWithConcurrency,
+  normalizeMercadoLivreCatalogProduct,
+  scoreCandidate,
+  shouldRetry,
+} from '../_shared/radar.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -14,6 +20,7 @@ const ML_API = 'https://api.mercadolibre.com'
 const ML_AUTH = 'https://auth.mercadolivre.com.br/authorization'
 const MARKETPLACE_SLUG = 'mercado-livre'
 const MAX_TERMS_PER_RUN = 12
+const MAX_PRODUCTS_PER_TERM = 20
 const TOKEN_PROVIDER = 'mercadolivre'
 const STATE_PROVIDER = 'mercadolivre_oauth_state'
 
@@ -72,7 +79,7 @@ async function requestToken(params: Record<string, string>) {
   return body as { access_token: string; refresh_token?: string; expires_in?: number; user_id?: number }
 }
 
-async function getAccessToken(db: Admin, forceRefresh = false): Promise<string> {
+async function fetchAccessToken(db: Admin, forceRefresh: boolean): Promise<string> {
   if (!ML_CLIENT_ID || !ML_CLIENT_SECRET) {
     throw new Error('Credenciais do Mercado Livre não configuradas (ML_CLIENT_ID e ML_CLIENT_SECRET).')
   }
@@ -91,21 +98,44 @@ async function getAccessToken(db: Admin, forceRefresh = false): Promise<string> 
   return token.access_token
 }
 
+// Um único token compartilhado pelas consultas paralelas: o ML invalida o refresh token
+// a cada renovação, então duas renovações simultâneas fariam uma delas falhar.
+let tokenPromise: Promise<string> | null = null
+
+function getAccessToken(db: Admin): Promise<string> {
+  if (!tokenPromise) {
+    tokenPromise = fetchAccessToken(db, false).catch((error) => {
+      tokenPromise = null
+      throw error
+    })
+  }
+  return tokenPromise
+}
+
+/** Renova só se ninguém já renovou depois que `staleToken` foi recusado. */
+async function refreshAccessToken(db: Admin, staleToken: string): Promise<string> {
+  const current = tokenPromise ? await tokenPromise.catch(() => null) : null
+  if (current && current !== staleToken) return current
+  tokenPromise = fetchAccessToken(db, true).catch((error) => {
+    tokenPromise = null
+    throw error
+  })
+  return tokenPromise
+}
+
 /* --------------------------------- Busca --------------------------------- */
 
-async function searchMercadoLivre(db: Admin, term: string, limit: number): Promise<unknown[]> {
-  const url = `${ML_API}/sites/MLB/search?${new URLSearchParams({ q: term, limit: String(Math.min(50, limit)) })}`
+/** GET autenticado na API do ML com renovação de token e retry. 404 vira null. */
+async function mlGet(db: Admin, path: string): Promise<Record<string, unknown> | null> {
   let token = await getAccessToken(db)
   let refreshed = false
 
   for (let attempt = 0; attempt < 4; attempt++) {
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
-    if (response.ok) {
-      const body = await response.json()
-      return Array.isArray(body.results) ? body.results : []
-    }
+    const response = await fetch(`${ML_API}${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
+    if (response.ok) return (await response.json()) as Record<string, unknown>
+    if (response.status === 404) return null
     if (response.status === 401 && !refreshed) {
-      token = await getAccessToken(db, true)
+      token = await refreshAccessToken(db, token)
       refreshed = true
       continue
     }
@@ -115,9 +145,43 @@ async function searchMercadoLivre(db: Admin, term: string, limit: number): Promi
       continue
     }
     const detail = await response.text().catch(() => '')
-    throw new Error(`Busca falhou (${response.status}) ${detail.slice(0, 200)}`)
+    throw new Error(`Mercado Livre respondeu ${response.status} em ${path.split('?')[0]}: ${detail.slice(0, 160)}`)
   }
-  throw new Error('Busca falhou após várias tentativas')
+  throw new Error('Mercado Livre não respondeu após várias tentativas')
+}
+
+/**
+ * Busca no CATÁLOGO do Mercado Livre (a busca de anúncios /sites/MLB/search exige
+ * permissão especial) e, para cada produto, consulta as ofertas dos vendedores.
+ */
+async function searchCatalog(db: Admin, term: string, limit: number) {
+  const params = new URLSearchParams({ status: 'active', site_id: 'MLB', q: term, limit: String(Math.min(MAX_PRODUCTS_PER_TERM, limit)) })
+  const search = await mlGet(db, `/products/search?${params}`)
+  const products = Array.isArray(search?.results) ? (search.results as Record<string, unknown>[]) : []
+
+  const candidates = await mapWithConcurrency(products, 4, async (product) => {
+    const id = typeof product.id === 'string' ? product.id : ''
+    if (!id) return null
+    const offers = await mlGet(db, `/products/${encodeURIComponent(id)}/items?limit=20`)
+    const candidate = normalizeMercadoLivreCatalogProduct(product, offers)
+    if (!candidate) return null
+    const { score, breakdown, flags } = scoreCandidate(candidate)
+    const results = Array.isArray(offers?.results) ? (offers.results as Record<string, unknown>[]) : []
+    const best = results.find((offer) => offer.price === candidate.price)
+    return {
+      ...candidate,
+      score,
+      score_breakdown: { ...breakdown, ...(flags.length ? { _alertas: flags } : {}) },
+      raw: {
+        offers_count: candidate.offers_count,
+        best_item_id: best?.item_id ?? null,
+        seller_id: best?.seller_id ?? null,
+        category_id: best?.category_id ?? null,
+      },
+    }
+  })
+
+  return { found: products.length, items: candidates.filter((item) => item !== null) }
 }
 
 /* -------------------------------- Coleta --------------------------------- */
@@ -145,22 +209,8 @@ async function collect(db: Admin, trigger: string) {
 
     for (const term of terms ?? []) {
       try {
-        const results = await searchMercadoLivre(db, term.term, term.max_results)
-        fetched += results.length
-        const items = results
-          .map((raw) => {
-            const candidate = normalizeMercadoLivreItem(raw)
-            if (!candidate) return null
-            const { score, breakdown, flags } = scoreCandidate(candidate)
-            const source = raw as Record<string, unknown>
-            return {
-              ...candidate,
-              score,
-              score_breakdown: { ...breakdown, ...(flags.length ? { _alertas: flags } : {}) },
-              raw: { category_id: source.category_id, listing_type_id: source.listing_type_id, seller_id: (source.seller as { id?: number } | undefined)?.id },
-            }
-          })
-          .filter(Boolean)
+        const { found, items } = await searchCatalog(db, term.term, term.max_results)
+        fetched += found
 
         const { data: count, error: upsertError } = await db.rpc('radar_upsert_candidates', {
           p_marketplace_slug: MARKETPLACE_SLUG,
