@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
 import { getPublicSupabaseEnv } from './env'
 
@@ -8,7 +8,7 @@ import { getPublicSupabaseEnv } from './env'
  * (registro de cliques, coletor do Radar) ou depois de verificar que o usuário é admin.
  * Nunca importe este arquivo em componentes 'use client'.
  */
-export function createAdminClient(): SupabaseClient<Database, 'public'> {
+export function createAdminClient() {
   if (typeof window !== 'undefined') {
     throw new Error('createAdminClient só pode ser usado no servidor')
   }
@@ -19,7 +19,7 @@ export function createAdminClient(): SupabaseClient<Database, 'public'> {
   }
 
   const { url } = getPublicSupabaseEnv()
-  return createClient<Database, 'public'>(url, serviceRoleKey, {
+  return createClient<Database>(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 }

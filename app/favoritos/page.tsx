@@ -1,50 +1,50 @@
-'use client'
-
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import { ProductGrid } from '@/components/product-card'
 import { EmptyState } from '@/components/empty-state'
-import { ProductCard } from '@/components/product-card'
-import { useEffect, useState } from 'react'
-import type { Product } from '@/types'
+import { LocalFavorites } from '@/components/local-favorites'
+import { getCurrentUser } from '@/lib/auth'
+import { createServerClient } from '@/lib/supabase/server'
+import { getProductsByIds } from '@/services/catalog'
 
-function getSavedProducts(): string[] {
-  if (typeof window === 'undefined') return []
-  const stored = window.localStorage.getItem('oferta-certa-favorites')
-  return stored ? (JSON.parse(stored) as string[]) : []
-}
+export const metadata: Metadata = { title: 'Favoritos', robots: { index: false } }
 
-export default function FavoritesPage() {
-  const [favoriteIds, setFavoriteIds] = useState<string[]>([])
-  const [products, setProducts] = useState<Product[]>([])
+export default async function FavoritesPage() {
+  const user = await getCurrentUser()
 
-  useEffect(() => {
-    setFavoriteIds(getSavedProducts())
-  }, [])
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+        <h1 className="text-2xl font-semibold text-slate-950">Favoritos</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Seus favoritos estão salvos só neste navegador.{' '}
+          <Link href="/login?next=/favoritos" className="font-medium text-brand-700 hover:underline">
+            Entre na sua conta
+          </Link>{' '}
+          para guardá-los com segurança e acessar de qualquer aparelho.
+        </p>
+        <div className="mt-6">
+          <LocalFavorites />
+        </div>
+      </div>
+    )
+  }
 
-  useEffect(() => {
-    if (!favoriteIds.length) return
-    import('@/services/data').then((module) => {
-      const favorites = module.getAllProducts().filter((product) => favoriteIds.includes(product.id))
-      setProducts(favorites)
-    })
-  }, [favoriteIds])
+  const supabase = await createServerClient()
+  const { data: rows } = await supabase.from('favorites').select('product_id').order('created_at', { ascending: false })
+  const products = await getProductsByIds((rows ?? []).map((row) => row.product_id))
 
   return (
-    <div className="mx-auto max-w-7xl px-4 pb-10 pt-8 sm:px-6 lg:px-8">
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft sm:p-10">
-        <h1 className="text-3xl font-semibold text-slate-950">Favoritos</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-600">Salve ofertas para conferir depois sem precisar fazer login.</p>
-      </div>
-
-      <section className="mt-8">
+    <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+      <h1 className="text-2xl font-semibold text-slate-950">Meus favoritos</h1>
+      <LocalFavorites syncToAccount />
+      <div className="mt-6">
         {products.length ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
+          <ProductGrid products={products} />
         ) : (
-          <EmptyState title="Nenhum favorito salvo" description="Adicione produtos aos favoritos para vê-los aqui." />
+          <EmptyState title="Nenhum favorito salvo" description="Toque em “Salvar nos favoritos” na página de uma oferta para guardá-la aqui." />
         )}
-      </section>
+      </div>
     </div>
   )
 }

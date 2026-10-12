@@ -1,10 +1,10 @@
 import { notFound } from 'next/navigation'
-import { getArticleBySlug } from '@/services/data'
+import { getArticleBySlug } from '@/services/catalog'
 
 export default async function ArticlePage(props: { params: Promise<{ slug: string }> }) {
   const { params } = props
   const { slug } = await params
-  const article = getArticleBySlug(slug)
+  const article = await getArticleBySlug(slug)
   if (!article) {
     notFound()
   }

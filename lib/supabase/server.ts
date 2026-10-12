@@ -1,6 +1,5 @@
 import { createServerClient as createSupabaseServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
 import { getPublicSupabaseEnv } from './env'
 
@@ -9,11 +8,11 @@ import { getPublicSupabaseEnv } from './env'
  * Usa SEMPRE a chave pública: as permissões vêm da sessão do usuário (cookies) e do RLS.
  * Para operações privilegiadas use `createAdminClient` de `./admin`.
  */
-export const createServerClient = async (): Promise<SupabaseClient<Database, 'public'>> => {
+export const createServerClient = async () => {
   const { url, publishableKey } = getPublicSupabaseEnv()
   const nextCookies = await cookies()
 
-  return createSupabaseServerClient<Database, 'public'>(url, publishableKey, {
+  return createSupabaseServerClient<Database>(url, publishableKey, {
     cookies: {
       getAll: () => nextCookies.getAll().map(({ name, value }) => ({ name, value })),
       setAll: (cookieList) => {
