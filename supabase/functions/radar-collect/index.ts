@@ -298,7 +298,7 @@ async function autoPublish(db: Admin, runId: string) {
 
   const { data: candidates, error: listError } = await db
     .from('candidate_products')
-    .select('id, status, is_demo, score, score_breakdown, image_url, price, suggested_category_id, last_run_id, product_id, permalink')
+    .select('id, status, is_demo, score, score_breakdown, image_url, price, original_price, suggested_category_id, last_run_id, product_id, permalink')
     .eq('status', 'pending')
     .eq('is_demo', false)
     .eq('last_run_id', runId)
@@ -327,6 +327,42 @@ async function autoPublish(db: Admin, runId: string) {
     published++
   }
   return { published, errors }
+}
+
+/**
+ * Garante no cache (ml_categories) o caminho raiz→folha de cada categoria do ML usada nesta coleta.
+ * O banco usa esse caminho para escolher a categoria do site (ml_resolve_category); sem ele, vale
+ * a categoria do termo. Falhas aqui não interrompem a coleta.
+ */
+const knownCategories = new Set<string>()
+async function ensureCategoryPaths(db: Admin, leafIds: (string | null | undefined)[]) {
+  const wanted = [...new Set(leafIds.filter((id): id is string => typeof id === 'string' && /^MLB\d+$/.test(id)))].filter(
+    (id) => !knownCategories.has(id)
+  )
+  if (!wanted.length) return
+  const { data: cached } = await db.from('ml_categories').select('id').in('id', wanted)
+  for (const row of cached ?? []) knownCategories.add(row.id as string)
+  const missing = wanted.filter((id) => !knownCategories.has(id)).slice(0, 40)
+  const rows = await mapWithConcurrency(missing, 4, async (id) => {
+    try {
+      const body = await mlGet(db, `/categories/${encodeURIComponent(id)}`)
+      const path = Array.isArray(body?.path_from_root) ? (body.path_from_root as Dict[]) : []
+      if (!path.length || typeof body?.name !== 'string') return null
+      return {
+        id,
+        name: body.name,
+        path: path.map((node) => String(node.id)),
+        path_names: path.map((node) => String(node.name)),
+      }
+    } catch {
+      return null
+    }
+  })
+  const valid = rows.filter((row) => row !== null)
+  if (valid.length) {
+    const { error } = await db.from('ml_categories').upsert(valid)
+    if (!error) for (const row of valid) knownCategories.add(row.id)
+  }
 }
 
 /* -------------------------------- Coleta --------------------------------- */
@@ -360,7 +396,8 @@ async function collect(db: Admin, trigger: string) {
     errors.push(...bestSellers.errors)
     const seen = new Set<string>()
 
-    const save = async (term: string, categoryId: string | null, items: { external_id: string }[]) => {
+    const save = async (term: string, categoryId: string | null, items: { external_id: string; raw?: { category_id?: unknown } }[]) => {
+      await ensureCategoryPaths(db, items.map((item) => (typeof item.raw?.category_id === 'string' ? item.raw.category_id : null)))
       const { data: count, error: upsertError } = await db.rpc('radar_upsert_candidates', {
         p_marketplace_slug: MARKETPLACE_SLUG,
         p_search_term: term,

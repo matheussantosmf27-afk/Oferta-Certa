@@ -65,6 +65,8 @@ export type Database = {
       automation_settings: {
         Row: {
           auto_publish_enabled: boolean
+          auto_publish_block_foreign_titles: boolean
+          auto_publish_max_discount: number
           auto_publish_max_per_day: number
           auto_publish_max_per_run: number
           auto_publish_min_score: number
@@ -77,6 +79,8 @@ export type Database = {
         }
         Insert: {
           auto_publish_enabled?: boolean
+          auto_publish_block_foreign_titles?: boolean
+          auto_publish_max_discount?: number
           auto_publish_max_per_day?: number
           auto_publish_max_per_run?: number
           auto_publish_min_score?: number
@@ -89,6 +93,8 @@ export type Database = {
         }
         Update: {
           auto_publish_enabled?: boolean
+          auto_publish_block_foreign_titles?: boolean
+          auto_publish_max_discount?: number
           auto_publish_max_per_day?: number
           auto_publish_max_per_run?: number
           auto_publish_min_score?: number
@@ -494,6 +500,18 @@ export type Database = {
           slug?: string
           updated_at?: string
         }
+        Relationships: []
+      }
+      ml_categories: {
+        Row: { fetched_at: string; id: string; name: string; path: string[]; path_names: string[] }
+        Insert: { fetched_at?: string; id: string; name: string; path: string[]; path_names: string[] }
+        Update: { fetched_at?: string; id?: string; name?: string; path?: string[]; path_names?: string[] }
+        Relationships: []
+      }
+      ml_category_map: {
+        Row: { category_id: string | null; created_at: string; ml_category_id: string; note: string | null; updated_at: string }
+        Insert: { category_id?: string | null; created_at?: string; ml_category_id: string; note?: string | null; updated_at?: string }
+        Update: { category_id?: string | null; created_at?: string; ml_category_id?: string; note?: string | null; updated_at?: string }
         Relationships: []
       }
       newsletter_subscribers: {
@@ -944,6 +962,7 @@ export type Database = {
         Returns: { connected: boolean; expires_at: string | null; updated_at: string }[]
       }
       is_admin: { Args: never; Returns: boolean }
+      ml_resolve_category: { Args: { p_fallback?: string; p_leaf: string }; Returns: string | null }
       publish_candidate: {
         Args: {
           p_affiliate_url: string

@@ -15,6 +15,8 @@ const settings: AutoPublishSettings = {
   auto_publish_min_score: 40,
   auto_publish_max_per_run: 20,
   auto_publish_max_per_day: 100,
+  auto_publish_max_discount: 60,
+  auto_publish_block_foreign_titles: true,
   ml_matt_word: 'minha_etiqueta',
   ml_matt_tool: '12345678',
 }
@@ -29,6 +31,7 @@ const candidate = (extra: Partial<AutoPublishCandidate> = {}): AutoPublishCandid
   score_breakdown: { desconto: 30 },
   image_url: 'https://http2.mlstatic.com/a.jpg',
   price: 199.9,
+  original_price: 279.9,
   suggested_category_id: 'cat-1',
   last_run_id: RUN,
   product_id: null,
@@ -156,5 +159,25 @@ describe('selectAutoPublishBatch', () => {
 
   it('não publica nada com a automação desligada', () => {
     expect(selectAutoPublishBatch(list, { ...settings, auto_publish_enabled: false }, RUN, 0)).toEqual([])
+  })
+})
+
+describe('salvaguardas de qualidade (13/10/2026)', () => {
+  it('manda para a fila manual descontos acima do teto configurado', () => {
+    expect(autoPublishBlockers(candidate({ price: 70.23, original_price: 215.46 }), settings, RUN)).toContain('desconto_alto')
+    expect(autoPublishBlockers(candidate({ price: 39.5, original_price: 99.9 }), settings, RUN)).toContain('desconto_alto')
+    expect(autoPublishBlockers(candidate({ price: 91.41, original_price: 199.9 }), settings, RUN)).not.toContain('desconto_alto')
+    expect(autoPublishBlockers(candidate({ original_price: null }), settings, RUN)).not.toContain('desconto_alto')
+  })
+
+  it('respeita o teto configurado no painel', () => {
+    const relaxed = { ...settings, auto_publish_max_discount: 70 }
+    expect(isAutoPublishEligible(candidate({ price: 39.5, original_price: 99.9 }), relaxed, RUN)).toBe(true)
+  })
+
+  it('bloqueia título estrangeiro só quando a opção está ligada', () => {
+    const foreign = candidate({ score_breakdown: { desconto: 30, _alertas: ['titulo_estrangeiro'] } })
+    expect(autoPublishBlockers(foreign, settings, RUN)).toContain('titulo_estrangeiro')
+    expect(autoPublishBlockers(foreign, { ...settings, auto_publish_block_foreign_titles: false }, RUN)).not.toContain('titulo_estrangeiro')
   })
 })

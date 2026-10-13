@@ -11,6 +11,7 @@ const REASON_LABEL: Record<string, string> = {
   sem_vendedor: 'sem vendedor em 2 coletas',
   despublicado_manual: 'despublicado no painel',
   despublicado_execucao: 'despublicado com a coleta',
+  regra_qualidade: 'fora das regras de qualidade',
 }
 const UUID_RE = /^[0-9a-f-]{36}$/i
 

@@ -219,6 +219,8 @@ export async function saveAutomationSettings(formData: FormData) {
       auto_publish_min_score: boundedInt(formData, 'auto_publish_min_score', 0, 100, 40),
       auto_publish_max_per_run: boundedInt(formData, 'auto_publish_max_per_run', 0, 200, 20),
       auto_publish_max_per_day: boundedInt(formData, 'auto_publish_max_per_day', 0, 1000, 100),
+      auto_publish_max_discount: boundedInt(formData, 'auto_publish_max_discount', 0, 100, 60),
+      auto_publish_block_foreign_titles: formData.get('auto_publish_block_foreign_titles') === 'on',
       updated_by: user.id,
     })
     .eq('id', true)

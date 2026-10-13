@@ -1,11 +1,16 @@
 // Regras puras da publicação automática (testadas em autopublish.test.ts).
 // O banco (publish_candidate_internal) reconfere tudo; isto evita chamadas inúteis e documenta a regra.
+import { discountPercent } from './radar.ts'
 
 export interface AutoPublishSettings {
   auto_publish_enabled: boolean
   auto_publish_min_score: number
   auto_publish_max_per_run: number
   auto_publish_max_per_day: number
+  /** Desconto máximo (%) aceito na publicação automática; acima disso vai para a fila manual. */
+  auto_publish_max_discount: number
+  /** Bloqueia anúncios com título estrangeiro/genérico na publicação automática. */
+  auto_publish_block_foreign_titles: boolean
   ml_matt_word: string | null
   ml_matt_tool: string | null
 }
@@ -18,6 +23,7 @@ export interface AutoPublishCandidate {
   score_breakdown: unknown
   image_url: string | null
   price: number
+  original_price: number | null
   suggested_category_id: string | null
   last_run_id: string | null
   product_id: string | null
@@ -106,6 +112,8 @@ export type IneligibleReason =
   | 'ja_publicado'
   | 'pontuacao'
   | 'desconto_suspeito'
+  | 'desconto_alto'
+  | 'titulo_estrangeiro'
   | 'sem_imagem'
   | 'sem_preco'
   | 'sem_categoria'
@@ -126,7 +134,11 @@ export function autoPublishBlockers(candidate: AutoPublishCandidate, settings: A
   if (candidate.is_demo) reasons.push('demo')
   if (candidate.product_id) reasons.push('ja_publicado')
   if (!(candidate.score > settings.auto_publish_min_score)) reasons.push('pontuacao')
-  if (alerts(candidate.score_breakdown).includes('desconto_suspeito')) reasons.push('desconto_suspeito')
+  const flags = alerts(candidate.score_breakdown)
+  if (flags.includes('desconto_suspeito')) reasons.push('desconto_suspeito')
+  const discount = discountPercent(candidate.price, candidate.original_price)
+  if (discount !== null && discount > settings.auto_publish_max_discount) reasons.push('desconto_alto')
+  if (settings.auto_publish_block_foreign_titles && flags.includes('titulo_estrangeiro')) reasons.push('titulo_estrangeiro')
   if (!candidate.image_url?.trim()) reasons.push('sem_imagem')
   if (!(candidate.price > 0)) reasons.push('sem_preco')
   if (!candidate.suggested_category_id) reasons.push('sem_categoria')

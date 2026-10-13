@@ -95,6 +95,33 @@ export function normalizeMercadoLivreCatalogProduct(product: unknown, offers: un
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
+const EN_WORDS = new Set([
+  'the', 'and', 'with', 'for', 'of', 'women', 'woman', 'men', 'ladies', 'lady', 'girls', 'boys', 'gift', 'gifts',
+  'young', 'student', 'students', 'set', 'pack', 'new', 'original', 'case', 'cover', 'wireless', 'portable', 'charger',
+])
+const PT_WORDS = new Set([
+  'de', 'da', 'do', 'das', 'dos', 'para', 'com', 'sem', 'e', 'em', 'no', 'na', 'kit', 'cor', 'tamanho', 'unidades',
+  'feminino', 'masculino', 'infantil', 'preto', 'branco', 'azul', 'rosa', 'vermelho', 'cinza', 'sabor', 'unid',
+])
+
+/**
+ * Título provavelmente estrangeiro (anúncio internacional/genérico): várias palavras típicas do inglês
+ * e nenhuma do português. Marcas e modelos (Galaxy, JBL, Wireless...) sozinhos não disparam o alerta.
+ */
+export function isLikelyForeignTitle(title: string): boolean {
+  if (/[ãõçáéíóúâêô]/i.test(title)) return false
+  const words = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z]+/).filter(Boolean)
+  const pt = words.filter((word) => PT_WORDS.has(word)).length
+  const en = words.filter((word) => EN_WORDS.has(word)).length
+  return pt === 0 && en >= 2
+}
+
+/** Desconto em % sobre o preço anterior (null se não houver preço anterior maior que o atual). */
+export function discountPercent(price: number, originalPrice: number | null | undefined): number | null {
+  if (!originalPrice || !(originalPrice > price) || !(price > 0)) return null
+  return Math.round(((originalPrice - price) / originalPrice) * 1000) / 10
+}
+
 /**
  * Pontuação 0–100. Princípios:
  * - desconto só conta se houver preço anterior maior que o atual;
@@ -141,6 +168,7 @@ export function scoreCandidate(candidate: NormalizedCandidate, options: { bestSe
     breakdown.sem_imagem = -10
     flags.push('sem_imagem')
   }
+  if (isLikelyForeignTitle(candidate.title)) flags.push('titulo_estrangeiro')
 
   const total = Object.values(breakdown).reduce((sum, value) => sum + value, 0)
   const rounded = Object.fromEntries(Object.entries(breakdown).map(([key, value]) => [key, Math.round(value * 10) / 10]))

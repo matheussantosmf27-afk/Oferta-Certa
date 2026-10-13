@@ -9,6 +9,8 @@ import {
   normalizeMercadoLivreCatalogProduct,
   scoreCandidate,
   shouldRetry,
+  discountPercent,
+  isLikelyForeignTitle,
 } from './radar'
 
 const product = {
@@ -157,5 +159,28 @@ describe('mais vendidos e preço mínimo', () => {
     expect(belowMinPrice(1500, 1200)).toBe(false)
     expect(belowMinPrice(60, null)).toBe(false)
     expect(belowMinPrice(60, 0)).toBe(false)
+  })
+})
+
+describe('isLikelyForeignTitle', () => {
+  it('marca anúncios genéricos em inglês', () => {
+    expect(isLikelyForeignTitle('Student Perfume Gifts, Young Ladies Perfume')).toBe(true)
+    expect(isLikelyForeignTitle('Wireless Earbuds for Women and Men')).toBe(true)
+  })
+
+  it('não marca títulos em português nem nomes de marca/modelo', () => {
+    expect(isLikelyForeignTitle('Perfume Deold, perfume feminino de coruja, perfume floral e frutado')).toBe(false)
+    expect(isLikelyForeignTitle('Fone De Ouvido Bluetooth JBL Wave Buds 2 Fit Preto')).toBe(false)
+    expect(isLikelyForeignTitle('Samsung Galaxy Buds Core')).toBe(false)
+    expect(isLikelyForeignTitle('Amazon Echo Dot 5ª Geração Com Alexa')).toBe(false)
+    expect(isLikelyForeignTitle('Power Bank 20.000mAh 22.5W Carga Rápida')).toBe(false)
+  })
+})
+
+describe('discountPercent', () => {
+  it('calcula com uma casa decimal e não inventa desconto', () => {
+    expect(discountPercent(39.5, 99.9)).toBe(60.5)
+    expect(discountPercent(100, null)).toBeNull()
+    expect(discountPercent(100, 90)).toBeNull()
   })
 })

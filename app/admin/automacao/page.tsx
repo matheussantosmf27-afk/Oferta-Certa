@@ -105,7 +105,27 @@ export default async function AutomationPage({ searchParams }: { searchParams: P
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
             />
           </label>
-          <div />
+          <label className="text-sm">
+            <span className="block font-medium text-slate-700">Desconto máximo aceito (%)</span>
+            <input
+              name="auto_publish_max_discount"
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={settings?.auto_publish_max_discount ?? 60}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-slate-500">Acima disso o item vai para a fila manual (preço anterior possivelmente inflado).</span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-slate-700 sm:col-span-2 lg:col-span-4">
+            <input
+              type="checkbox"
+              name="auto_publish_block_foreign_titles"
+              defaultChecked={settings?.auto_publish_block_foreign_titles ?? true}
+              className="mt-0.5"
+            />
+            <span>Não publicar automaticamente anúncios com título em outro idioma (genéricos/internacionais).</span>
+          </label>
           <div className="text-sm sm:col-span-2">
             <span className="block font-medium text-slate-700">Etiqueta de afiliado (definida só pela validação do link)</span>
             <p className="mt-1 rounded-md bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700">
