@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { AuthCard } from '@/components/auth/auth-card'
+import { GoogleButton } from '@/components/auth/google-button'
 import { LoginForm } from '@/components/auth/auth-forms'
 import { getCurrentUser, safeNextPath } from '@/lib/auth'
 
@@ -17,6 +18,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
 
   return (
     <AuthCard title="Entrar" description="Acesse seus favoritos e sua conta.">
+      <GoogleButton next={next} />
       <LoginForm next={next} notice={params.erro ? NOTICES[params.erro] : undefined} />
     </AuthCard>
   )
