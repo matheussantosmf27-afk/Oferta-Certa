@@ -1,6 +1,14 @@
 import { notFound } from 'next/navigation'
 import { getArticleBySlug } from '@/services/catalog'
 
+// Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
+export const revalidate = 300
+
+// Gera cada página na primeira visita e mantém em cache.
+export async function generateStaticParams() {
+  return []
+}
+
 export default async function ArticlePage(props: { params: Promise<{ slug: string }> }) {
   const { params } = props
   const { slug } = await params

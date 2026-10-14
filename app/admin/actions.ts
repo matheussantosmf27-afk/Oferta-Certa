@@ -219,6 +219,8 @@ export async function saveAutomationSettings(formData: FormData) {
       auto_publish_min_score: boundedInt(formData, 'auto_publish_min_score', 0, 100, 40),
       auto_publish_max_per_run: boundedInt(formData, 'auto_publish_max_per_run', 0, 200, 20),
       auto_publish_max_per_day: boundedInt(formData, 'auto_publish_max_per_day', 0, 1000, 100),
+      auto_publish_max_discount: boundedInt(formData, 'auto_publish_max_discount', 0, 100, 60),
+      auto_publish_block_foreign_titles: formData.get('auto_publish_block_foreign_titles') === 'on',
       updated_by: user.id,
     })
     .eq('id', true)
@@ -387,6 +389,8 @@ export async function saveProduct(formData: FormData) {
     installments: text(formData, 'installments') || null,
     free_shipping: formData.get('free_shipping') === 'on',
     featured: formData.get('featured') === 'on',
+    // Salvo no painel = escolha manual; a rotina de destaques automáticos não mexe mais.
+    featured_source: null,
     status: (['draft', 'active', 'inactive', 'expired'].includes(status) ? status : 'draft') as typeof status,
     last_price_update: new Date().toISOString(),
   }

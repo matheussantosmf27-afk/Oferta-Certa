@@ -11,3 +11,9 @@ export function getSiteUrl(): string {
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
   return 'http://localhost:3000'
 }
+
+/** E-mail de contato exibido nas páginas de privacidade e termos (opcional). */
+export function getContactEmail(): string | null {
+  const email = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim()
+  return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null
+}

@@ -3,6 +3,9 @@ import { EmptyState } from '@/components/empty-state'
 import { getActiveCoupons } from '@/services/catalog'
 import { formatCurrency } from '@/lib/price'
 
+// Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
+export const revalidate = 300
+
 export default async function CouponsPage() {
   const coupons = await getActiveCoupons()
 

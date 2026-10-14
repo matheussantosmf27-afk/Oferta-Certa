@@ -65,6 +65,8 @@ export type Database = {
       automation_settings: {
         Row: {
           auto_publish_enabled: boolean
+          auto_publish_block_foreign_titles: boolean
+          auto_publish_max_discount: number
           auto_publish_max_per_day: number
           auto_publish_max_per_run: number
           auto_publish_min_score: number
@@ -77,6 +79,8 @@ export type Database = {
         }
         Insert: {
           auto_publish_enabled?: boolean
+          auto_publish_block_foreign_titles?: boolean
+          auto_publish_max_discount?: number
           auto_publish_max_per_day?: number
           auto_publish_max_per_run?: number
           auto_publish_min_score?: number
@@ -89,6 +93,8 @@ export type Database = {
         }
         Update: {
           auto_publish_enabled?: boolean
+          auto_publish_block_foreign_titles?: boolean
+          auto_publish_max_discount?: number
           auto_publish_max_per_day?: number
           auto_publish_max_per_run?: number
           auto_publish_min_score?: number
@@ -496,6 +502,18 @@ export type Database = {
         }
         Relationships: []
       }
+      ml_categories: {
+        Row: { fetched_at: string; id: string; name: string; path: string[]; path_names: string[] }
+        Insert: { fetched_at?: string; id: string; name: string; path: string[]; path_names: string[] }
+        Update: { fetched_at?: string; id?: string; name?: string; path?: string[]; path_names?: string[] }
+        Relationships: []
+      }
+      ml_category_map: {
+        Row: { category_id: string | null; created_at: string; ml_category_id: string; note: string | null; updated_at: string }
+        Insert: { category_id?: string | null; created_at?: string; ml_category_id: string; note?: string | null; updated_at?: string }
+        Update: { category_id?: string | null; created_at?: string; ml_category_id?: string; note?: string | null; updated_at?: string }
+        Relationships: []
+      }
       newsletter_subscribers: {
         Row: {
           created_at: string
@@ -563,6 +581,8 @@ export type Database = {
           discount_percentage: number | null
           external_id: string | null
           featured: boolean
+          featured_source: string | null
+          features: string[]
           flash_deal: boolean
           free_shipping: boolean
           gallery: string[]
@@ -579,6 +599,7 @@ export type Database = {
           short_description: string
           slug: string
           source_url: string | null
+          specs: Json
           status: Database["public"]["Enums"]["product_status"]
           trending: boolean
           updated_at: string
@@ -602,6 +623,8 @@ export type Database = {
           discount_percentage?: number | null
           external_id?: string | null
           featured?: boolean
+          featured_source?: string | null
+          features?: string[]
           flash_deal?: boolean
           free_shipping?: boolean
           gallery?: string[]
@@ -618,6 +641,7 @@ export type Database = {
           short_description?: string
           slug: string
           source_url?: string | null
+          specs?: Json
           status?: Database["public"]["Enums"]["product_status"]
           trending?: boolean
           updated_at?: string
@@ -641,6 +665,8 @@ export type Database = {
           discount_percentage?: number | null
           external_id?: string | null
           featured?: boolean
+          featured_source?: string | null
+          features?: string[]
           flash_deal?: boolean
           free_shipping?: boolean
           gallery?: string[]
@@ -657,6 +683,7 @@ export type Database = {
           short_description?: string
           slug?: string
           source_url?: string | null
+          specs?: Json
           status?: Database["public"]["Enums"]["product_status"]
           trending?: boolean
           updated_at?: string
@@ -901,6 +928,14 @@ export type Database = {
           marketplace_id: string
         }[]
       }
+      search_public_products: {
+        Args: { p_query: string; p_limit?: number }
+        Returns: { id: string; rank: number }[]
+      }
+      get_public_product_details: {
+        Args: { p_product_id: string }
+        Returns: { features: string[]; specs: Json }[]
+      }
       get_public_products: {
         Args: { p_product_id?: string }
         Returns: {
@@ -944,6 +979,7 @@ export type Database = {
         Returns: { connected: boolean; expires_at: string | null; updated_at: string }[]
       }
       is_admin: { Args: never; Returns: boolean }
+      ml_resolve_category: { Args: { p_fallback?: string; p_leaf: string }; Returns: string | null }
       publish_candidate: {
         Args: {
           p_affiliate_url: string

@@ -9,6 +9,9 @@ import {
   normalizeMercadoLivreCatalogProduct,
   scoreCandidate,
   shouldRetry,
+  discountPercent,
+  extractProductContent,
+  isLikelyForeignTitle,
 } from './radar'
 
 const product = {
@@ -157,5 +160,79 @@ describe('mais vendidos e preço mínimo', () => {
     expect(belowMinPrice(1500, 1200)).toBe(false)
     expect(belowMinPrice(60, null)).toBe(false)
     expect(belowMinPrice(60, 0)).toBe(false)
+  })
+})
+
+describe('isLikelyForeignTitle', () => {
+  it('marca anúncios genéricos em inglês', () => {
+    expect(isLikelyForeignTitle('Student Perfume Gifts, Young Ladies Perfume')).toBe(true)
+    expect(isLikelyForeignTitle('Wireless Earbuds for Women and Men')).toBe(true)
+  })
+
+  it('não marca títulos em português nem nomes de marca/modelo', () => {
+    expect(isLikelyForeignTitle('Perfume Deold, perfume feminino de coruja, perfume floral e frutado')).toBe(false)
+    expect(isLikelyForeignTitle('Fone De Ouvido Bluetooth JBL Wave Buds 2 Fit Preto')).toBe(false)
+    expect(isLikelyForeignTitle('Samsung Galaxy Buds Core')).toBe(false)
+    expect(isLikelyForeignTitle('Amazon Echo Dot 5ª Geração Com Alexa')).toBe(false)
+    expect(isLikelyForeignTitle('Power Bank 20.000mAh 22.5W Carga Rápida')).toBe(false)
+  })
+})
+
+describe('discountPercent', () => {
+  it('calcula com uma casa decimal e não inventa desconto', () => {
+    expect(discountPercent(39.5, 99.9)).toBe(60.5)
+    expect(discountPercent(100, null)).toBeNull()
+    expect(discountPercent(100, 90)).toBeNull()
+  })
+})
+
+describe('extractProductContent', () => {
+  const product = {
+    id: 'MLB54982411',
+    name: 'Celular Samsung Galaxy A17',
+    short_description: { type: 'plaintext', content: '  Celular com IA,\n 256GB e câmera de 50MP.  ' },
+    main_features: [{ text: 'Tela de 6,7"' }, { text: '' }, { text: 'Bateria de 5000 mAh' }],
+    attributes: [
+      { id: 'BRAND', name: 'Marca', value_name: 'Samsung' },
+      { id: 'GTIN', name: 'Código universal', value_name: '7890000000000' },
+      { id: 'IS_KIT', name: 'É kit', value_name: 'Não' },
+      { id: 'PACKAGE_WEIGHT', name: 'Peso da embalagem', value_name: '400 g' },
+      { id: 'INTERNAL_MEMORY', name: 'Memória interna', value_name: '256 GB' },
+      { id: 'INTERNAL_MEMORY_2', name: 'memória interna', value_name: '256 GB' },
+      { id: 'COLOR', name: 'Cor', value_name: null },
+    ],
+    pictures: [
+      { url: 'http://http2.mlstatic.com/a.jpg' },
+      { url: 'https://http2.mlstatic.com/b.jpg' },
+      { url: 'https://http2.mlstatic.com/b.jpg' },
+    ],
+  }
+
+  it('limpa a descrição e pega os destaques', () => {
+    const content = extractProductContent(product)
+    expect(content.description).toBe('Celular com IA, 256GB e câmera de 50MP.')
+    expect(content.features).toEqual(['Tela de 6,7"', 'Bateria de 5000 mAh'])
+  })
+
+  it('mostra só atributos úteis, sem repetir e sem valor vazio', () => {
+    expect(extractProductContent(product).specs).toEqual([
+      { name: 'Marca', value: 'Samsung' },
+      { name: 'Memória interna', value: '256 GB' },
+    ])
+  })
+
+  it('usa só fotos https, sem duplicar', () => {
+    expect(extractProductContent(product).gallery).toEqual(['https://http2.mlstatic.com/a.jpg', 'https://http2.mlstatic.com/b.jpg'])
+  })
+
+  it('não inventa nada quando o catálogo não traz conteúdo', () => {
+    expect(extractProductContent({ id: 'MLB1' })).toEqual({ description: null, features: [], specs: [], gallery: [] })
+    expect(extractProductContent(null)).toEqual({ description: null, features: [], specs: [], gallery: [] })
+  })
+
+  it('o candidato normalizado leva o conteúdo junto', () => {
+    const candidate = normalizeMercadoLivreCatalogProduct(product, { paging: { total: 1 }, results: [{ price: 1339.9, currency_id: 'BRL', condition: 'new', shipping: {} }] })
+    expect(candidate?.description).toBe('Celular com IA, 256GB e câmera de 50MP.')
+    expect(candidate?.gallery).toHaveLength(2)
   })
 })

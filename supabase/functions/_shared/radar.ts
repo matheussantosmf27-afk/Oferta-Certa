@@ -15,6 +15,23 @@ export interface NormalizedCandidate {
   offers_count: number | null
   condition: string | null
   brand: string | null
+  /** Conteúdo do catálogo do ML (descrição curta, destaques, ficha técnica e fotos). */
+  description: string | null
+  features: string[]
+  specs: ProductSpec[]
+  gallery: string[]
+}
+
+export interface ProductSpec {
+  name: string
+  value: string
+}
+
+export interface ProductContent {
+  description: string | null
+  features: string[]
+  specs: ProductSpec[]
+  gallery: string[]
 }
 
 export interface ScoreResult {
@@ -45,6 +62,60 @@ function brandFrom(attributes: unknown): string | null {
   if (!Array.isArray(attributes)) return null
   const brand = attributes.find((attr) => isDict(attr) && attr.id === 'BRAND')
   return isDict(brand) ? str(brand.value_name) : null
+}
+
+// Atributos técnicos/logísticos do ML que não interessam a quem compra.
+const HIDDEN_SPEC_IDS = new Set([
+  'GTIN', 'MPN', 'SELLER_SKU', 'ITEM_CONDITION', 'EMPTY_GTIN_REASON', 'SALE_FORMAT', 'UNITS_PER_PACK',
+  'PRODUCT_DATA_SOURCE', 'EXCLUSIVE_CHANNEL', 'GIFTABLE', 'CATALOG_TITLE', 'ALPHANUMERIC_MODEL', 'SYI_PYMES_ID',
+])
+const HIDDEN_SPEC_PREFIXES = ['IS_', 'HAS_', 'PACKAGE_', 'SHIPMENT_', 'HAZMAT_']
+const MAX_SPECS = 24
+const MAX_FEATURES = 8
+const MAX_GALLERY = 8
+
+const cleanText = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max)
+
+/**
+ * Extrai o conteúdo de um produto do catálogo do ML (resultado de /products/search ou /products/{id}).
+ * Nada é inventado: campos ausentes ficam vazios.
+ */
+export function extractProductContent(product: unknown): ProductContent {
+  if (!isDict(product)) return { description: null, features: [], specs: [], gallery: [] }
+
+  const short = isDict(product.short_description) ? str(product.short_description.content) : str(product.short_description)
+  const description = short ? cleanText(short, 2000) : null
+
+  const features = (Array.isArray(product.main_features) ? product.main_features : [])
+    .map((item) => (isDict(item) ? str(item.text) : str(item)))
+    .filter((text): text is string => Boolean(text))
+    .map((text) => cleanText(text, 200))
+    .slice(0, MAX_FEATURES)
+
+  const seen = new Set<string>()
+  const specs: ProductSpec[] = []
+  for (const attr of Array.isArray(product.attributes) ? product.attributes : []) {
+    if (!isDict(attr)) continue
+    const id = str(attr.id) ?? ''
+    const name = str(attr.name)
+    const value = str(attr.value_name)
+    if (!name || !value || HIDDEN_SPEC_IDS.has(id) || HIDDEN_SPEC_PREFIXES.some((prefix) => id.startsWith(prefix))) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    specs.push({ name: cleanText(name, 60), value: cleanText(value, 120) })
+    if (specs.length >= MAX_SPECS) break
+  }
+
+  const gallery = [
+    ...new Set(
+      (Array.isArray(product.pictures) ? product.pictures : [])
+        .map((picture) => (isDict(picture) ? httpsImage(str(picture.url)) : null))
+        .filter((url): url is string => Boolean(url && /^https:\/\//.test(url)))
+    ),
+  ].slice(0, MAX_GALLERY)
+
+  return { description, features, specs, gallery }
 }
 
 /**
@@ -90,10 +161,38 @@ export function normalizeMercadoLivreCatalogProduct(product: unknown, offers: un
     offers_count: total ?? valid.length,
     condition: str(best.offer.condition),
     brand: brandFrom(product.attributes),
+    ...extractProductContent(product),
   }
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const EN_WORDS = new Set([
+  'the', 'and', 'with', 'for', 'of', 'women', 'woman', 'men', 'ladies', 'lady', 'girls', 'boys', 'gift', 'gifts',
+  'young', 'student', 'students', 'set', 'pack', 'new', 'original', 'case', 'cover', 'wireless', 'portable', 'charger',
+])
+const PT_WORDS = new Set([
+  'de', 'da', 'do', 'das', 'dos', 'para', 'com', 'sem', 'e', 'em', 'no', 'na', 'kit', 'cor', 'tamanho', 'unidades',
+  'feminino', 'masculino', 'infantil', 'preto', 'branco', 'azul', 'rosa', 'vermelho', 'cinza', 'sabor', 'unid',
+])
+
+/**
+ * Título provavelmente estrangeiro (anúncio internacional/genérico): várias palavras típicas do inglês
+ * e nenhuma do português. Marcas e modelos (Galaxy, JBL, Wireless...) sozinhos não disparam o alerta.
+ */
+export function isLikelyForeignTitle(title: string): boolean {
+  if (/[ãõçáéíóúâêô]/i.test(title)) return false
+  const words = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z]+/).filter(Boolean)
+  const pt = words.filter((word) => PT_WORDS.has(word)).length
+  const en = words.filter((word) => EN_WORDS.has(word)).length
+  return pt === 0 && en >= 2
+}
+
+/** Desconto em % sobre o preço anterior (null se não houver preço anterior maior que o atual). */
+export function discountPercent(price: number, originalPrice: number | null | undefined): number | null {
+  if (!originalPrice || !(originalPrice > price) || !(price > 0)) return null
+  return Math.round(((originalPrice - price) / originalPrice) * 1000) / 10
+}
 
 /**
  * Pontuação 0–100. Princípios:
@@ -141,6 +240,7 @@ export function scoreCandidate(candidate: NormalizedCandidate, options: { bestSe
     breakdown.sem_imagem = -10
     flags.push('sem_imagem')
   }
+  if (isLikelyForeignTitle(candidate.title)) flags.push('titulo_estrangeiro')
 
   const total = Object.values(breakdown).reduce((sum, value) => sum + value, 0)
   const rounded = Object.fromEntries(Object.entries(breakdown).map(([key, value]) => [key, Math.round(value * 10) / 10]))
