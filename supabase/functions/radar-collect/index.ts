@@ -5,6 +5,7 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import {
   backoffDelay,
   belowMinPrice,
+  extractProductContent,
   mapWithConcurrency,
   normalizeMercadoLivreCatalogProduct,
   parseHighlights,
@@ -32,6 +33,8 @@ const MAX_TERMS_PER_RUN = 12
 const MAX_PRODUCTS_PER_TERM = 20
 const MAX_BEST_SELLERS_PER_CATEGORY = 10
 const MAX_REFRESH_PER_RUN = 60
+const MAX_SOURCES_PER_RUN = 12
+const MAX_CONTENT_FILL_PER_RUN = 25
 const BEST_SELLERS_TERM = 'mais vendidos'
 const TOKEN_PROVIDER = 'mercadolivre'
 const STATE_PROVIDER = 'mercadolivre_oauth_state'
@@ -233,6 +236,74 @@ async function loadBestSellers(db: Admin) {
 }
 
 /**
+ * Mais vendidos por SUBCATEGORIA (tabela radar_best_seller_sources), em rodízio: a cada coleta
+ * entram as fontes há mais tempo sem consulta. Registra o resultado de cada fonte para o painel.
+ */
+async function loadBestSellerSources(db: Admin, positions: BestSellers) {
+  const { data: sources, error } = await db
+    .from('radar_best_seller_sources')
+    .select('ml_category_id, name, category_id, max_items')
+    .eq('active', true)
+    .order('last_run_at', { ascending: true, nullsFirst: true })
+    .limit(MAX_SOURCES_PER_RUN)
+  if (error) throw error
+
+  const lists: { categoryId: string; name: string; ids: string[] }[] = []
+  const errors: { term: string; message: string }[] = []
+  for (const source of sources ?? []) {
+    let status = 'ok'
+    let count = 0
+    try {
+      const body = await mlGet(db, `/highlights/MLB/category/${encodeURIComponent(source.ml_category_id as string)}`)
+      const entries = parseHighlights(body).slice(0, (source.max_items as number) ?? 20)
+      count = entries.length
+      if (!entries.length) status = 'sem_lista'
+      for (const entry of entries) {
+        if (!positions.has(entry.id) || (positions.get(entry.id) as number) > entry.position) positions.set(entry.id, entry.position)
+      }
+      if (entries.length) lists.push({ categoryId: source.category_id as string, name: source.name as string, ids: entries.map((entry) => entry.id) })
+    } catch (sourceError) {
+      status = 'erro'
+      errors.push({ term: `mais vendidos: ${source.name}`, message: sourceError instanceof Error ? sourceError.message : String(sourceError) })
+    }
+    await db
+      .from('radar_best_seller_sources')
+      .update({ last_run_at: new Date().toISOString(), last_status: status, last_count: count })
+      .eq('ml_category_id', source.ml_category_id)
+  }
+  return { lists, errors }
+}
+
+/** Busca no catálogo do ML o conteúdo (descrição, destaques, ficha, fotos) dos publicados que ainda estão sem descrição. */
+async function fillMissingContent(db: Admin) {
+  const { data: products, error } = await db
+    .from('products')
+    .select('id, external_id')
+    .eq('status', 'active')
+    .or('description.is.null,description.eq.')
+    .not('external_id', 'is', null)
+    .limit(MAX_CONTENT_FILL_PER_RUN)
+  if (error) throw error
+  const items = (
+    await mapWithConcurrency(products ?? [], 4, async (product) => {
+      try {
+        const detail = await mlGet(db, `/products/${encodeURIComponent(product.external_id as string)}`)
+        if (!detail) return null
+        const content = extractProductContent(detail)
+        if (!content.description && !content.features.length && !content.specs.length) return null
+        return { product_id: product.id, ...content }
+      } catch {
+        return null
+      }
+    })
+  ).filter((item) => item !== null)
+  if (!items.length) return 0
+  const { data, error: fillError } = await db.rpc('radar_fill_product_content', { p_items: items })
+  if (fillError) throw fillError
+  return (data as number | null) ?? 0
+}
+
+/**
  * Reconsulta as ofertas dos produtos publicados que NÃO apareceram nesta coleta:
  * atualiza o preço ou, sem vendedor (404 / nenhuma oferta válida), conta uma ausência.
  * Duas ausências seguidas tornam o produto inativo (no banco, radar_refresh_products).
@@ -380,6 +451,7 @@ async function collect(db: Admin, trigger: string) {
   let refreshed = 0
   let expired = 0
   let autoPublished = 0
+  let contentFilled = 0
   let fatal: string | null = null
 
   try {
@@ -394,6 +466,13 @@ async function collect(db: Admin, trigger: string) {
 
     const bestSellers = await loadBestSellers(db)
     errors.push(...bestSellers.errors)
+    try {
+      const sources = await loadBestSellerSources(db, bestSellers.positions)
+      bestSellers.lists.push(...sources.lists)
+      errors.push(...sources.errors)
+    } catch (sourcesError) {
+      errors.push({ term: 'mais vendidos por subcategoria', message: sourcesError instanceof Error ? sourcesError.message : String(sourcesError) })
+    }
     const seen = new Set<string>()
 
     const save = async (term: string, categoryId: string | null, items: { external_id: string; raw?: { category_id?: unknown } }[]) => {
@@ -460,6 +539,12 @@ async function collect(db: Admin, trigger: string) {
       }
 
       try {
+        contentFilled = await fillMissingContent(db)
+      } catch (fillError) {
+        errors.push({ term: 'conteúdo dos produtos', message: fillError instanceof Error ? fillError.message : String(fillError) })
+      }
+
+      try {
         const result = await autoPublish(db, runId)
         autoPublished = result.published
         errors.push(...result.errors)
@@ -477,6 +562,7 @@ async function collect(db: Admin, trigger: string) {
       refreshed ? `${refreshed} preços reconsultados` : '',
       expired ? `${expired} inativados sem vendedor` : '',
       autoPublished ? `${autoPublished} publicados automaticamente` : '',
+      contentFilled ? `${contentFilled} produtos com conteúdo completado` : '',
       errors.length ? `${errors.length} erro(s)` : '',
     ].filter(Boolean).join(', ')
     const message = fatal ?? summary

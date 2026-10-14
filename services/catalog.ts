@@ -96,6 +96,30 @@ export async function getPriceHistory(productId: string): Promise<{ price: numbe
   return data ?? []
 }
 
+export interface ProductSpec {
+  name: string
+  value: string
+}
+
+/** Destaques e ficha técnica de um produto ativo (vindos do catálogo do Mercado Livre). */
+export async function getProductDetails(productId: string): Promise<{ features: string[]; specs: ProductSpec[] }> {
+  const empty = { features: [], specs: [] }
+  if (!isUuid(productId)) return empty
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('get_public_product_details', { p_product_id: productId }).maybeSingle()
+  if (error) {
+    logError('getProductDetails', error)
+    return empty
+  }
+  const specs = Array.isArray(data?.specs)
+    ? (data.specs as unknown[]).filter(
+        (spec): spec is ProductSpec =>
+          typeof spec === 'object' && spec !== null && typeof (spec as ProductSpec).name === 'string' && typeof (spec as ProductSpec).value === 'string'
+      )
+    : []
+  return { features: data?.features ?? [], specs }
+}
+
 export async function getProductsByIds(ids: string[]): Promise<Product[]> {
   const valid = Array.from(new Set(ids.filter(isUuid))).slice(0, 100)
   if (!valid.length) return []

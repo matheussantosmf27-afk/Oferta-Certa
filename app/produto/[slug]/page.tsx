@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
-import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ExternalLink, Info, ShieldCheck, Star, Truck } from 'lucide-react'
-import { getPriceHistory, getProductBySlug, listProducts } from '@/services/catalog'
+import { Check, ExternalLink, Info, ShieldCheck, Star, Truck } from 'lucide-react'
+import { getPriceHistory, getProductBySlug, getProductDetails, listProducts } from '@/services/catalog'
+import { ProductGallery } from '@/components/product-gallery'
 import { FavoriteButton } from '@/components/favorite-button'
 import { ShareActions } from '@/components/share-actions'
 import { ProductGrid } from '@/components/product-card'
@@ -18,7 +18,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const product = await getProductBySlug(slug)
   if (!product) return { title: 'Oferta não encontrada' }
-  const description = `${product.name} por ${formatCurrency(product.current_price)} em ${product.marketplace_name}.`
+  const lead = `${product.name} por ${formatCurrency(product.current_price)} em ${product.marketplace_name}.`
+  const summary = product.short_description || product.description
+  const description = summary ? `${lead} ${summary}`.slice(0, 300) : lead
   return {
     title: product.name,
     description,
@@ -32,10 +34,12 @@ export default async function ProductPage({ params }: Props) {
   const product = await getProductBySlug(slug)
   if (!product) notFound()
 
-  const [related, history] = await Promise.all([
+  const [related, history, details] = await Promise.all([
     listProducts({ categorySlug: product.category_slug, excludeId: product.id, limit: 4 }),
     getPriceHistory(product.id),
+    getProductDetails(product.id),
   ])
+  const images = [...new Set([product.image_url, ...(product.gallery ?? [])].filter(Boolean))].slice(0, 8)
   const discount = product.discount_percentage && product.discount_percentage > 0 ? product.discount_percentage : null
   const productUrl = `${getSiteUrl()}/produto/${product.slug}`
   const updated = new Date(product.last_price_update)
@@ -44,7 +48,8 @@ export default async function ProductPage({ params }: Props) {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.name,
-    image: product.image_url || undefined,
+    image: images.length ? images : undefined,
+    description: product.description || undefined,
     brand: product.brand ? { '@type': 'Brand', name: product.brand } : undefined,
     offers: {
       '@type': 'Offer',
@@ -67,19 +72,7 @@ export default async function ProductPage({ params }: Props) {
 
       <div className="mt-3 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-lg border border-slate-200 bg-white p-6">
-          {product.image_url ? (
-            <Image
-              src={product.image_url}
-              alt={product.name}
-              width={800}
-              height={600}
-              priority
-              sizes="(min-width: 1024px) 50vw, 100vw"
-              className="mx-auto max-h-[420px] w-full object-contain"
-            />
-          ) : (
-            <div className="flex h-72 items-center justify-center text-slate-400">Sem imagem</div>
-          )}
+          <ProductGallery images={images} alt={product.name} />
         </div>
 
         <div className="space-y-4">
@@ -146,10 +139,35 @@ export default async function ProductPage({ params }: Props) {
         <PriceHistory history={history} />
       </div>
 
-      {product.description ? (
+      {product.description || details.features.length ? (
         <section className="mt-8 rounded-lg border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-950">Descrição</h2>
-          <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{product.description}</p>
+          <h2 className="text-lg font-semibold text-slate-950">Sobre o produto</h2>
+          {product.description ? <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{product.description}</p> : null}
+          {details.features.length ? (
+            <ul className="mt-4 space-y-2">
+              {details.features.map((feature) => (
+                <li key={feature} className="flex gap-2 text-sm leading-6 text-slate-700">
+                  <Check className="mt-1 h-4 w-4 shrink-0 text-brand-700" aria-hidden />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="mt-4 text-xs text-slate-500">Informações do catálogo do {product.marketplace_name}. Confira os detalhes na página do vendedor.</p>
+        </section>
+      ) : null}
+
+      {details.specs.length ? (
+        <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
+          <h2 className="text-lg font-semibold text-slate-950">Ficha técnica</h2>
+          <dl className="mt-3 divide-y divide-slate-100 text-sm">
+            {details.specs.map((spec) => (
+              <div key={spec.name} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 py-2">
+                <dt className="text-slate-500">{spec.name}</dt>
+                <dd className="text-slate-900">{spec.value}</dd>
+              </div>
+            ))}
+          </dl>
         </section>
       ) : null}
 

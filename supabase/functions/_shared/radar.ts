@@ -15,6 +15,23 @@ export interface NormalizedCandidate {
   offers_count: number | null
   condition: string | null
   brand: string | null
+  /** Conteúdo do catálogo do ML (descrição curta, destaques, ficha técnica e fotos). */
+  description: string | null
+  features: string[]
+  specs: ProductSpec[]
+  gallery: string[]
+}
+
+export interface ProductSpec {
+  name: string
+  value: string
+}
+
+export interface ProductContent {
+  description: string | null
+  features: string[]
+  specs: ProductSpec[]
+  gallery: string[]
 }
 
 export interface ScoreResult {
@@ -45,6 +62,60 @@ function brandFrom(attributes: unknown): string | null {
   if (!Array.isArray(attributes)) return null
   const brand = attributes.find((attr) => isDict(attr) && attr.id === 'BRAND')
   return isDict(brand) ? str(brand.value_name) : null
+}
+
+// Atributos técnicos/logísticos do ML que não interessam a quem compra.
+const HIDDEN_SPEC_IDS = new Set([
+  'GTIN', 'MPN', 'SELLER_SKU', 'ITEM_CONDITION', 'EMPTY_GTIN_REASON', 'SALE_FORMAT', 'UNITS_PER_PACK',
+  'PRODUCT_DATA_SOURCE', 'EXCLUSIVE_CHANNEL', 'GIFTABLE', 'CATALOG_TITLE', 'ALPHANUMERIC_MODEL', 'SYI_PYMES_ID',
+])
+const HIDDEN_SPEC_PREFIXES = ['IS_', 'HAS_', 'PACKAGE_', 'SHIPMENT_', 'HAZMAT_']
+const MAX_SPECS = 24
+const MAX_FEATURES = 8
+const MAX_GALLERY = 8
+
+const cleanText = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max)
+
+/**
+ * Extrai o conteúdo de um produto do catálogo do ML (resultado de /products/search ou /products/{id}).
+ * Nada é inventado: campos ausentes ficam vazios.
+ */
+export function extractProductContent(product: unknown): ProductContent {
+  if (!isDict(product)) return { description: null, features: [], specs: [], gallery: [] }
+
+  const short = isDict(product.short_description) ? str(product.short_description.content) : str(product.short_description)
+  const description = short ? cleanText(short, 2000) : null
+
+  const features = (Array.isArray(product.main_features) ? product.main_features : [])
+    .map((item) => (isDict(item) ? str(item.text) : str(item)))
+    .filter((text): text is string => Boolean(text))
+    .map((text) => cleanText(text, 200))
+    .slice(0, MAX_FEATURES)
+
+  const seen = new Set<string>()
+  const specs: ProductSpec[] = []
+  for (const attr of Array.isArray(product.attributes) ? product.attributes : []) {
+    if (!isDict(attr)) continue
+    const id = str(attr.id) ?? ''
+    const name = str(attr.name)
+    const value = str(attr.value_name)
+    if (!name || !value || HIDDEN_SPEC_IDS.has(id) || HIDDEN_SPEC_PREFIXES.some((prefix) => id.startsWith(prefix))) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    specs.push({ name: cleanText(name, 60), value: cleanText(value, 120) })
+    if (specs.length >= MAX_SPECS) break
+  }
+
+  const gallery = [
+    ...new Set(
+      (Array.isArray(product.pictures) ? product.pictures : [])
+        .map((picture) => (isDict(picture) ? httpsImage(str(picture.url)) : null))
+        .filter((url): url is string => Boolean(url && /^https:\/\//.test(url)))
+    ),
+  ].slice(0, MAX_GALLERY)
+
+  return { description, features, specs, gallery }
 }
 
 /**
@@ -90,6 +161,7 @@ export function normalizeMercadoLivreCatalogProduct(product: unknown, offers: un
     offers_count: total ?? valid.length,
     condition: str(best.offer.condition),
     brand: brandFrom(product.attributes),
+    ...extractProductContent(product),
   }
 }
 

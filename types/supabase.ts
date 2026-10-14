@@ -581,6 +581,7 @@ export type Database = {
           discount_percentage: number | null
           external_id: string | null
           featured: boolean
+          features: string[]
           flash_deal: boolean
           free_shipping: boolean
           gallery: string[]
@@ -597,6 +598,7 @@ export type Database = {
           short_description: string
           slug: string
           source_url: string | null
+          specs: Json
           status: Database["public"]["Enums"]["product_status"]
           trending: boolean
           updated_at: string
@@ -620,6 +622,7 @@ export type Database = {
           discount_percentage?: number | null
           external_id?: string | null
           featured?: boolean
+          features?: string[]
           flash_deal?: boolean
           free_shipping?: boolean
           gallery?: string[]
@@ -636,6 +639,7 @@ export type Database = {
           short_description?: string
           slug: string
           source_url?: string | null
+          specs?: Json
           status?: Database["public"]["Enums"]["product_status"]
           trending?: boolean
           updated_at?: string
@@ -659,6 +663,7 @@ export type Database = {
           discount_percentage?: number | null
           external_id?: string | null
           featured?: boolean
+          features?: string[]
           flash_deal?: boolean
           free_shipping?: boolean
           gallery?: string[]
@@ -675,6 +680,7 @@ export type Database = {
           short_description?: string
           slug?: string
           source_url?: string | null
+          specs?: Json
           status?: Database["public"]["Enums"]["product_status"]
           trending?: boolean
           updated_at?: string
@@ -918,6 +924,10 @@ export type Database = {
           id: string
           marketplace_id: string
         }[]
+      }
+      get_public_product_details: {
+        Args: { p_product_id: string }
+        Returns: { features: string[]; specs: Json }[]
       }
       get_public_products: {
         Args: { p_product_id?: string }
