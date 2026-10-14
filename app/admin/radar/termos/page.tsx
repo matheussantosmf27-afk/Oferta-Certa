@@ -2,6 +2,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { Flash, PageTitle } from '@/components/admin/flash'
 import { SubmitButton } from '@/components/ui'
 import { deleteSearchTerm, saveSearchTerm } from '@/app/admin/actions'
+import { DEFAULT_STORES, RADAR_STORES } from '@/lib/stores'
 
 export default async function SearchTermsPage({ searchParams }: { searchParams: Promise<{ ok?: string; erro?: string }> }) {
   const params = await searchParams
@@ -20,9 +21,20 @@ export default async function SearchTermsPage({ searchParams }: { searchParams: 
     </select>
   )
 
+  const StoreChecks = ({ value }: { value?: string[] | null }) => (
+    <fieldset className="flex flex-wrap items-center gap-3 text-sm text-slate-700">
+      <legend className="sr-only">Lojas pesquisadas</legend>
+      {RADAR_STORES.map((store) => (
+        <label key={store.slug} className="flex items-center gap-1">
+          <input type="checkbox" name="marketplaces" value={store.slug} defaultChecked={(value ?? DEFAULT_STORES).includes(store.slug)} /> {store.name}
+        </label>
+      ))}
+    </fieldset>
+  )
+
   return (
     <div className="space-y-5">
-      <PageTitle title="Termos do Radar" description="O coletor busca cada termo ativo no Mercado Livre e envia os resultados para a fila. Preço mínimo descarta acessórios baratos que não são o produto buscado; prefira termos específicos (ex.: “notebook i5 16gb”, “smart tv 50 polegadas”)." />
+      <PageTitle title="Termos do Radar" description="O coletor busca cada termo ativo nas lojas marcadas (Mercado Livre, Shopee, AliExpress) e envia os resultados para a fila. Preço mínimo descarta acessórios baratos que não são o produto buscado; prefira termos específicos (ex.: “notebook i5 16gb”, “smart tv 50 polegadas”)." />
       <Flash ok={params.ok} erro={params.erro} />
 
       <form action={saveSearchTerm} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4">
@@ -39,6 +51,7 @@ export default async function SearchTermsPage({ searchParams }: { searchParams: 
           <span className="block font-medium text-slate-700">Preço mín. (R$)</span>
           <input name="min_price" type="number" min={0} step="0.01" placeholder="opcional" className="mt-1 w-28 rounded-md border border-slate-300 px-2 py-2" />
         </label>
+        <StoreChecks />
         <input type="hidden" name="active" value="on" />
         <SubmitButton pendingText="Salvando…">Adicionar</SubmitButton>
       </form>
@@ -61,6 +74,7 @@ export default async function SearchTermsPage({ searchParams }: { searchParams: 
                 aria-label="Preço mínimo (R$)"
                 className="w-28 rounded-md border border-slate-300 px-2 py-2 text-sm"
               />
+              <StoreChecks value={term.marketplaces} />
               <label className="flex items-center gap-1 text-sm text-slate-700">
                 <input type="checkbox" name="active" defaultChecked={term.active} /> Ativo
               </label>

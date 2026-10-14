@@ -28,6 +28,10 @@ export interface AutoPublishCandidate {
   last_run_id: string | null
   product_id: string | null
   permalink: string
+  /** Loja do candidato; ausente = Mercado Livre. */
+  marketplace_slug?: string | null
+  /** Link de afiliado já gerado pela API da loja parceira (Shopee, AliExpress). */
+  affiliate_url?: string | null
 }
 
 export interface AffiliateTag {
@@ -118,6 +122,7 @@ export type IneligibleReason =
   | 'sem_preco'
   | 'sem_categoria'
   | 'vendedor_nao_confirmado'
+  | 'sem_link_afiliado'
 
 function alerts(breakdown: unknown): string[] {
   if (!breakdown || typeof breakdown !== 'object' || Array.isArray(breakdown)) return []
@@ -125,11 +130,36 @@ function alerts(breakdown: unknown): string[] {
   return Array.isArray(list) ? list.filter((item): item is string => typeof item === 'string') : []
 }
 
+export const MERCADO_LIVRE = 'mercado-livre'
+
+const isMercadoLivre = (candidate: Pick<AutoPublishCandidate, 'marketplace_slug'>) =>
+  !candidate.marketplace_slug || candidate.marketplace_slug === MERCADO_LIVRE
+
+/** Link de afiliado de loja parceira: só https e diferente do link original do produto. */
+function partnerAffiliateUrl(candidate: Pick<AutoPublishCandidate, 'affiliate_url' | 'permalink'>): string | null {
+  const url = candidate.affiliate_url?.trim()
+  if (!url || !/^https:\/\/\S+$/.test(url) || url === candidate.permalink) return null
+  return url
+}
+
+/**
+ * Link a publicar: no Mercado Livre é montado com a etiqueta configurada; nas lojas parceiras
+ * é o link que a própria API gerou com a conta de afiliado.
+ */
+export function affiliateUrlFor(candidate: AutoPublishCandidate, tag: AffiliateTag | null): string | null {
+  if (isMercadoLivre(candidate)) return tag ? buildMercadoLivreAffiliateUrl(candidate.permalink, tag) : null
+  return partnerAffiliateUrl(candidate)
+}
+
 /** Lista os motivos que impedem a publicação automática (vazia = elegível). */
 export function autoPublishBlockers(candidate: AutoPublishCandidate, settings: AutoPublishSettings, runId: string): IneligibleReason[] {
   const reasons: IneligibleReason[] = []
   if (!settings.auto_publish_enabled) reasons.push('desligado')
-  if (!affiliateTagFrom(settings)) reasons.push('sem_etiqueta')
+  if (isMercadoLivre(candidate)) {
+    if (!affiliateTagFrom(settings)) reasons.push('sem_etiqueta')
+  } else if (!partnerAffiliateUrl(candidate)) {
+    reasons.push('sem_link_afiliado')
+  }
   if (candidate.status !== 'pending') reasons.push('nao_pendente')
   if (candidate.is_demo) reasons.push('demo')
   if (candidate.product_id) reasons.push('ja_publicado')

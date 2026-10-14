@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   affiliateTagFrom,
+  affiliateUrlFor,
   analyzeMercadoLivreAffiliateLink,
   autoPublishBlockers,
   buildMercadoLivreAffiliateUrl,
@@ -179,5 +180,33 @@ describe('salvaguardas de qualidade (13/10/2026)', () => {
     const foreign = candidate({ score_breakdown: { desconto: 30, _alertas: ['titulo_estrangeiro'] } })
     expect(autoPublishBlockers(foreign, settings, RUN)).toContain('titulo_estrangeiro')
     expect(autoPublishBlockers(foreign, { ...settings, auto_publish_block_foreign_titles: false }, RUN)).not.toContain('titulo_estrangeiro')
+  })
+})
+
+describe('lojas parceiras (Shopee, AliExpress)', () => {
+  const shopee = (extra: Partial<AutoPublishCandidate> = {}) =>
+    candidate({
+      marketplace_slug: 'shopee',
+      permalink: 'https://shopee.com.br/product/1/2',
+      affiliate_url: 'https://s.shopee.com.br/AbC',
+      ...extra,
+    })
+
+  it('usa o link gerado pela API, sem exigir a etiqueta do Mercado Livre', () => {
+    const noTag = { ...settings, ml_matt_word: null, ml_matt_tool: null }
+    expect(autoPublishBlockers(shopee(), noTag, RUN)).toEqual([])
+    expect(affiliateUrlFor(shopee(), null)).toBe('https://s.shopee.com.br/AbC')
+  })
+
+  it('bloqueia quando a API não devolveu link de afiliado válido', () => {
+    expect(autoPublishBlockers(shopee({ affiliate_url: null }), settings, RUN)).toContain('sem_link_afiliado')
+    expect(autoPublishBlockers(shopee({ affiliate_url: 'https://shopee.com.br/product/1/2' }), settings, RUN)).toContain('sem_link_afiliado')
+    expect(affiliateUrlFor(shopee({ affiliate_url: 'http://s.shopee.com.br/x' }), null)).toBeNull()
+  })
+
+  it('no Mercado Livre continua montando o link com a etiqueta', () => {
+    const tag = affiliateTagFrom(settings)
+    expect(affiliateUrlFor(candidate(), tag)).toContain('matt_word=minha_etiqueta')
+    expect(affiliateUrlFor(candidate(), null)).toBeNull()
   })
 })

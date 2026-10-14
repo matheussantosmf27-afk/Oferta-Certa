@@ -6,6 +6,7 @@ import { requireAdmin } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
 import { getPublicSupabaseEnv } from '@/lib/supabase/env'
 import { slugify } from '@/lib/slug'
+import { parseStores } from '@/lib/stores'
 import { analyzeMercadoLivreAffiliateLink, buildMercadoLivreAffiliateUrl } from '@/supabase/functions/_shared/autopublish'
 
 // Todas as ações usam o cliente da sessão: o RLS (is_admin) é a barreira final,
@@ -104,8 +105,10 @@ export async function restoreCandidate(formData: FormData) {
 }
 
 /** Dispara o coletor (Edge Function) usando a sessão do admin. */
-export async function runRadarNow() {
+export async function runRadarNow(formData?: FormData) {
   await requireAdmin()
+  // 'parceiros' = Shopee e AliExpress; sem valor = Mercado Livre.
+  const source = formData?.get('source') === 'parceiros' ? 'parceiros' : undefined
   const supabase = await createServerClient()
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
@@ -118,7 +121,7 @@ export async function runRadarNow() {
     const response = await fetch(`${url}/functions/v1/radar-collect`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, apikey: publishableKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trigger: 'manual' }),
+      body: JSON.stringify({ trigger: 'manual', ...(source ? { source } : {}) }),
       cache: 'no-store',
       signal: AbortSignal.timeout(55_000),
     })
@@ -174,8 +177,10 @@ export async function saveSearchTerm(formData: FormData) {
     max_results: maxResults,
     min_price: optionalNumber(formData, 'min_price'),
     active: formData.get('active') === 'on',
+    marketplaces: parseStores(formData.getAll('marketplaces')),
   }
   if (!term) back('/admin/radar/termos', 'erro', 'Informe o termo de busca.')
+  if (!payload.marketplaces.length) back('/admin/radar/termos', 'erro', 'Marque pelo menos uma loja para o termo.')
 
   const supabase = await createServerClient()
   const { error } = id
