@@ -37,9 +37,17 @@ export async function listProducts(query: ProductQuery = {}): Promise<Product[]>
   let request = supabase.rpc('get_public_products', {})
 
   const term = query.q ? sanitizeSearchTerm(query.q) : ''
+  // Busca sem acento e por palavras (no banco); aqui só filtramos pelos ids encontrados.
+  let ranking: Map<string, number> | null = null
   if (term) {
-    const pattern = `%${term}%`
-    request = request.or(`name.ilike.${pattern},brand.ilike.${pattern},description.ilike.${pattern}`)
+    const { data: matches, error: searchError } = await supabase.rpc('search_public_products', { p_query: term, p_limit: 200 })
+    if (searchError) {
+      logError('listProducts/search', searchError)
+      return []
+    }
+    if (!matches?.length) return []
+    ranking = new Map(matches.map((match, index) => [match.id, index]))
+    request = request.in('id', [...ranking.keys()])
   }
   if (query.categorySlug) request = request.eq('category_slug', query.categorySlug)
   if (query.marketplaceSlug) request = request.eq('marketplace_slug', query.marketplaceSlug)
@@ -71,7 +79,12 @@ export async function listProducts(query: ProductQuery = {}): Promise<Product[]>
     logError('listProducts', error)
     return []
   }
-  return data ?? []
+  const products = data ?? []
+  if (ranking && (!query.sort || query.sort === 'relevancia')) {
+    const order = ranking
+    return [...products].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+  }
+  return products
 }
 
 export const getProductBySlug = cache(async (slug: string): Promise<Product | null> => {

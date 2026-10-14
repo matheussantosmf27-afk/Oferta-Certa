@@ -12,6 +12,14 @@ import { AddToCartButton } from '@/components/cart/add-to-cart-button'
 import { formatCurrency } from '@/lib/price'
 import { getSiteUrl } from '@/lib/site'
 
+// Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
+export const revalidate = 300
+
+// Gera cada página na primeira visita e mantém em cache.
+export async function generateStaticParams() {
+  return []
+}
+
 type Props = { params: Promise<{ slug: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

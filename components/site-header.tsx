@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { Heart, Menu, Search, User } from 'lucide-react'
+import { Heart, Menu, Search } from 'lucide-react'
 import { getCategories } from '@/services/catalog'
-import { getCurrentUser } from '@/lib/auth'
 import { CartLink } from '@/components/cart/cart-link'
+import { AccountLink } from '@/components/account-link'
 
 function Logo() {
   return (
@@ -19,7 +19,7 @@ function Logo() {
 }
 
 export async function SiteHeader() {
-  const [categories, user] = await Promise.all([getCategories(), getCurrentUser()])
+  const categories = await getCategories()
 
   return (
     <header className="border-b border-slate-200 bg-white">
@@ -54,16 +54,7 @@ export async function SiteHeader() {
               <Heart className="h-4 w-4" aria-hidden /> Favoritos
             </Link>
             <CartLink withLabel />
-            {user ? (
-              <Link href="/minha-conta" className="inline-flex max-w-[12rem] items-center gap-1.5 truncate text-sm font-medium text-slate-700 hover:text-slate-950">
-                <User className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="truncate">{user.email}</span>
-              </Link>
-            ) : (
-              <Link href="/login" className="rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-                Entrar
-              </Link>
-            )}
+            <AccountLink />
           </nav>
 
           <div className="md:hidden">
@@ -85,15 +76,7 @@ export async function SiteHeader() {
               <Link href="/ofertas" className="block rounded px-3 py-2 text-sm text-slate-800 hover:bg-slate-50">
                 Ofertas
               </Link>
-              {user ? (
-                <Link href="/minha-conta" className="block rounded px-3 py-2 text-sm text-slate-800 hover:bg-slate-50">
-                  Minha conta
-                </Link>
-              ) : (
-                <Link href="/login" className="block rounded px-3 py-2 text-sm font-semibold text-brand-700 hover:bg-slate-50">
-                  Entrar
-                </Link>
-              )}
+              <AccountLink variant="menu" />
             </div>
           </details>
         </div>

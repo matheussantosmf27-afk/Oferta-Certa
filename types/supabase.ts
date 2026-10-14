@@ -581,6 +581,7 @@ export type Database = {
           discount_percentage: number | null
           external_id: string | null
           featured: boolean
+          featured_source: string | null
           features: string[]
           flash_deal: boolean
           free_shipping: boolean
@@ -622,6 +623,7 @@ export type Database = {
           discount_percentage?: number | null
           external_id?: string | null
           featured?: boolean
+          featured_source?: string | null
           features?: string[]
           flash_deal?: boolean
           free_shipping?: boolean
@@ -663,6 +665,7 @@ export type Database = {
           discount_percentage?: number | null
           external_id?: string | null
           featured?: boolean
+          featured_source?: string | null
           features?: string[]
           flash_deal?: boolean
           free_shipping?: boolean
@@ -924,6 +927,10 @@ export type Database = {
           id: string
           marketplace_id: string
         }[]
+      }
+      search_public_products: {
+        Args: { p_query: string; p_limit?: number }
+        Returns: { id: string; rank: number }[]
       }
       get_public_product_details: {
         Args: { p_product_id: string }

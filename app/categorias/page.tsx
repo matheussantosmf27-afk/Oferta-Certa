@@ -3,6 +3,9 @@ import Link from 'next/link'
 import { EmptyState } from '@/components/empty-state'
 import { getCategories } from '@/services/catalog'
 
+// Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
+export const revalidate = 300
+
 export const metadata: Metadata = {
   title: 'Categorias',
   description: 'Navegue pelas ofertas por categoria.',

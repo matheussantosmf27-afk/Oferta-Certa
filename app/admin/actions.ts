@@ -389,6 +389,8 @@ export async function saveProduct(formData: FormData) {
     installments: text(formData, 'installments') || null,
     free_shipping: formData.get('free_shipping') === 'on',
     featured: formData.get('featured') === 'on',
+    // Salvo no painel = escolha manual; a rotina de destaques automáticos não mexe mais.
+    featured_source: null,
     status: (['draft', 'active', 'inactive', 'expired'].includes(status) ? status : 'draft') as typeof status,
     last_price_update: new Date().toISOString(),
   }

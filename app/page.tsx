@@ -4,6 +4,9 @@ import { SectionHeading } from '@/components/section-heading'
 import { EmptyState } from '@/components/empty-state'
 import { getCategories, listProducts } from '@/services/catalog'
 
+// Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
+export const revalidate = 300
+
 export default async function HomePage() {
   const [deals, featured, recent, categories] = await Promise.all([
     listProducts({ sort: 'maior-desconto', withDiscountOnly: true, limit: 8 }),
