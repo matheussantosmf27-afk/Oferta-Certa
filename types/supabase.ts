@@ -541,18 +541,21 @@ export type Database = {
           price: number
           product_id: string
           recorded_at: string
+          source: string
         }
         Insert: {
           id?: string
           price: number
           product_id: string
           recorded_at?: string
+          source?: string
         }
         Update: {
           id?: string
           price?: number
           product_id?: string
           recorded_at?: string
+          source?: string
         }
         Relationships: [
           {
@@ -936,6 +939,10 @@ export type Database = {
           id: string
           marketplace_id: string
         }[]
+      }
+      get_radar_status: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       get_public_product_insights: {
         Args: { p_product_id: string }

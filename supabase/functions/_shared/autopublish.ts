@@ -123,6 +123,7 @@ export type IneligibleReason =
   | 'sem_categoria'
   | 'vendedor_nao_confirmado'
   | 'sem_link_afiliado'
+  | 'desconto_nao_comprovado'
 
 function alerts(breakdown: unknown): string[] {
   if (!breakdown || typeof breakdown !== 'object' || Array.isArray(breakdown)) return []
@@ -166,6 +167,7 @@ export function autoPublishBlockers(candidate: AutoPublishCandidate, settings: A
   if (!(candidate.score > settings.auto_publish_min_score)) reasons.push('pontuacao')
   const flags = alerts(candidate.score_breakdown)
   if (flags.includes('desconto_suspeito')) reasons.push('desconto_suspeito')
+  if (flags.includes('preco_anterior_acima_mercado')) reasons.push('desconto_nao_comprovado')
   const discount = discountPercent(candidate.price, candidate.original_price)
   if (discount !== null && discount > settings.auto_publish_max_discount) reasons.push('desconto_alto')
   if (settings.auto_publish_block_foreign_titles && flags.includes('titulo_estrangeiro')) reasons.push('titulo_estrangeiro')

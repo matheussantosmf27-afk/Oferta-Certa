@@ -1,7 +1,8 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import type { Product } from '@/types'
-import { formatCurrency } from '@/lib/price'
+import { displayDiscount, formatCurrency } from '@/lib/price'
+import type { RadarStatusText } from '@/lib/radar-status'
 
 // Posição de cada sinal no radar (ângulo em graus a partir do topo, distância do centro em % do raio).
 const BLIPS = [
@@ -17,15 +18,14 @@ function polar(angle: number, distance: number) {
   return { left: `${50 + Math.cos(radians) * distance * 50}%`, top: `${50 + Math.sin(radians) * distance * 50}%` }
 }
 
-const timeFormat = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
 
 /**
  * Abertura da home: o radar mostra as maiores quedas de preço reais como sinais,
  * e o painel ao lado lista as mesmas ofertas. Sem ofertas, mostra só a busca.
  */
-export function RadarHero({ deals, totalOffers, checkedAt }: { deals: Product[]; totalOffers: number; checkedAt: string | null }) {
-  const signals = deals.slice(0, BLIPS.length)
-  const checked = checkedAt ? timeFormat.format(new Date(checkedAt)) : null
+export function RadarHero({ deals, status }: { deals: Product[]; status: RadarStatusText | null }) {
+  // Só ofertas com desconto corroborado viram sinal no radar.
+  const signals = deals.filter((deal) => displayDiscount(deal) !== null).slice(0, BLIPS.length)
 
   return (
     <section className="console-grid relative overflow-hidden bg-night text-white">
@@ -35,8 +35,8 @@ export function RadarHero({ deals, totalOffers, checkedAt }: { deals: Product[];
             O radar que encontra o preço certo.
           </h1>
           <p className="mt-5 max-w-xl text-base leading-7 text-white/75 sm:text-lg">
-            Conferimos os preços das lojas várias vezes ao dia e só mostramos desconto quando a loja informa um preço anterior maior que o
-            atual.
+            Conferimos os preços das lojas várias vezes ao dia e só mostramos desconto quando o preço anterior é confirmado pelo nosso
+            histórico ou pelo preço dos outros vendedores.
           </p>
 
           <form action="/buscar" method="get" role="search" className="mt-8 flex max-w-xl gap-2">
@@ -55,13 +55,15 @@ export function RadarHero({ deals, totalOffers, checkedAt }: { deals: Product[];
             </button>
           </form>
 
-          {totalOffers ? (
-            <p className="mt-6 flex items-center gap-2.5 text-sm text-white/65">
-              <span className="relative flex h-2.5 w-2.5" aria-hidden>
-                <span className="motion-safe-only absolute inline-flex h-full w-full animate-ping rounded-full bg-scan opacity-60" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-scan" />
+          {status ? (
+            <p className="mt-6 flex max-w-xl items-start gap-2.5 text-sm leading-6 text-white/70">
+              <span className="relative mt-1.5 flex h-2.5 w-2.5 shrink-0" aria-hidden>
+                {status.healthy ? (
+                  <span className="motion-safe-only absolute inline-flex h-full w-full animate-ping rounded-full bg-scan opacity-60" />
+                ) : null}
+                <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${status.healthy ? 'bg-scan' : 'bg-amber-400'}`} />
               </span>
-              {totalOffers} ofertas no radar agora{checked ? `, preços conferidos às ${checked}` : ''}.
+              {status.text}
             </p>
           ) : null}
         </div>

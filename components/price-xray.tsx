@@ -27,23 +27,13 @@ function headline(verdict: PriceVerdict, vsMedian: number, offers: number, isLow
  * Raio-X do preço: o preço mostrado contra o de todos os vendedores do mesmo produto,
  * a checagem do desconto e a reputação do vendedor. Tudo vem da API oficial da loja e das coletas do site.
  */
-export function PriceXray({
-  price,
-  oldPrice,
-  marketplaceName,
-  insights,
-  history,
-}: {
-  price: number
-  oldPrice: number | null
-  marketplaceName: string
-  insights: ProductInsights | null
-  history: { price: number; recorded_at: string }[]
-}) {
+export function PriceXray({ price, marketplaceName, insights }: { price: number; marketplaceName: string; insights: ProductInsights | null }) {
   const market = insights?.market ?? null
   const seller = insights?.seller ?? null
-  if (!market && !seller) return null
-  const insight = priceInsight({ price, oldPrice, market, history })
+  const reference = insights?.reference_price ?? null
+  const status = insights?.discount_status ?? null
+  if (!market && !seller && !(reference && status)) return null
+  const insight = priceInsight({ price, market })
   const showRange = market && market.offers >= 2 && market.max > market.min
   const position = (value: number) => (market ? Math.min(100, Math.max(0, ((value - market.min) / (market.max - market.min || 1)) * 100)) : 0)
 
@@ -87,28 +77,39 @@ export function PriceXray({
         </div>
       ) : null}
 
-      {insight.discountCheck !== 'sem_desconto' && oldPrice ? (
+      {reference && status ? (
         <p className="mt-5 flex gap-2 text-sm leading-6 text-slate-700">
-          {insight.discountCheck === 'confirmado' ? (
+          {status === 'confirmado' ? (
             <>
               <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
               <span>
-                <strong className="font-semibold text-slate-900">Desconto confirmado.</strong> Nas nossas coletas, o preço já esteve perto de{' '}
-                {formatCurrency(oldPrice)}.
+                <strong className="font-semibold text-slate-900">Desconto confirmado.</strong> Nas nossas coletas, o produto já custou perto de{' '}
+                {formatCurrency(reference)}.
               </span>
             </>
-          ) : insight.discountCheck === 'acima_do_mercado' && market ? (
+          ) : status === 'compativel' && market ? (
+            <>
+              <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" aria-hidden />
+              <span>
+                <strong className="font-semibold text-slate-900">Preço anterior compatível com o mercado.</strong> A loja informa{' '}
+                {formatCurrency(reference)}, e outros vendedores cobram até {formatCurrency(market.max)} hoje.
+              </span>
+            </>
+          ) : status === 'acima_do_mercado' && market ? (
             <>
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
               <span>
-                <strong className="font-semibold text-slate-900">Desconto pode estar inflado.</strong> O preço anterior informado (
-                {formatCurrency(oldPrice)}) está acima do que qualquer vendedor cobra hoje (até {formatCurrency(market.max)}).
+                <strong className="font-semibold text-slate-900">Desconto não confirmado.</strong> O preço anterior informado ({formatCurrency(reference)})
+                está acima do que qualquer vendedor cobra hoje (até {formatCurrency(market.max)}), por isso não mostramos o percentual.
               </span>
             </>
           ) : (
             <>
               <Info className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" aria-hidden />
-              <span>Preço anterior informado pela loja. Vamos confirmá-lo com o nosso histórico nos próximos dias.</span>
+              <span>
+                A loja informa um preço anterior de {formatCurrency(reference)}, que ainda não conseguimos confirmar. Por isso não mostramos o
+                percentual de desconto.
+              </span>
             </>
           )}
         </p>

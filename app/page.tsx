@@ -3,27 +3,28 @@ import { ProductGrid } from '@/components/product-card'
 import { SectionHeading } from '@/components/section-heading'
 import { EmptyState } from '@/components/empty-state'
 import { RadarHero } from '@/components/radar-hero'
-import { getCategories, listProducts } from '@/services/catalog'
+import { getCategories, getRadarStatus, listProducts } from '@/services/catalog'
+import { radarStatusText } from '@/lib/radar-status'
 
 // Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
 export const revalidate = 300
 
 export default async function HomePage() {
-  const [deals, featured, recent, categories] = await Promise.all([
+  const [deals, featured, recent, categories, radar] = await Promise.all([
     listProducts({ sort: 'maior-desconto', withDiscountOnly: true, limit: 8 }),
     listProducts({ featuredOnly: true, limit: 8 }),
     listProducts({ sort: 'recentes', limit: 12 }),
     getCategories(),
+    getRadarStatus(),
   ])
 
   const hasProducts = deals.length + featured.length + recent.length > 0
 
-  const totalOffers = categories.reduce((sum, category) => sum + (category.productsCount ?? 0), 0)
-  const checkedAt = recent[0]?.last_price_update ?? null
+  const status = radarStatusText(radar)
 
   return (
     <>
-      <RadarHero deals={deals} totalOffers={totalOffers} checkedAt={checkedAt} />
+      <RadarHero deals={deals} status={status} />
       <div className="mx-auto max-w-7xl space-y-12 px-4 pb-14 pt-10 sm:px-6 lg:px-8">
       {!hasProducts ? (
         <EmptyState
@@ -39,7 +40,7 @@ export default async function HomePage() {
 
       {deals.length ? (
         <section className="space-y-4">
-          <SectionHeading title="Ofertas do dia" description="Maiores descontos em relação ao preço anterior informado pela loja." href="/ofertas" />
+          <SectionHeading title="Ofertas do dia" description="Maiores descontos confirmados pelo nosso histórico ou pelo preço dos outros vendedores." href="/ofertas" />
           <ProductGrid products={deals} />
         </section>
       ) : null}

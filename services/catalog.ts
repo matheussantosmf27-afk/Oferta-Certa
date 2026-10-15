@@ -1,6 +1,8 @@
 import { cache } from 'react'
 import { createPublicClient } from '@/lib/supabase/public'
 import type { Article, Category, Coupon, Product, ProductSort } from '@/types'
+import { parseDiscountStatus, type DiscountStatus } from '@/lib/price-insight'
+import { parseRadarStatus, type RadarStatus } from '@/lib/radar-status'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -223,6 +225,9 @@ export interface ProductInsights {
   seller: { name: string | null; level: number | null; power_seller: string | null; sales: number | null } | null
   official_store: boolean | null
   warranty: string | null
+  /** Preço anterior informado pela loja (bruto, mesmo quando o desconto não foi corroborado). */
+  reference_price: number | null
+  discount_status: DiscountStatus | null
   history: { day: string; offers: number; min: number; median: number; max: number }[]
 }
 
@@ -253,6 +258,8 @@ export async function getProductInsights(productId: string): Promise<ProductInsi
     seller: (raw.seller as ProductInsights['seller']) ?? null,
     official_store: typeof raw.official_store === 'boolean' ? raw.official_store : null,
     warranty: typeof raw.warranty === 'string' ? raw.warranty : null,
+    reference_price: toNum(raw.reference_price),
+    discount_status: parseDiscountStatus(raw.discount_status),
     history: Array.isArray(raw.history)
       ? (raw.history as Record<string, unknown>[]).map((row) => ({
           day: String(row.day),
@@ -263,4 +270,15 @@ export async function getProductInsights(productId: string): Promise<ProductInsi
         }))
       : [],
   }
+}
+
+/** Indicador público do Radar (publicadas, conferidas em 24h e última coleta concluída). */
+export async function getRadarStatus(): Promise<RadarStatus | null> {
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('get_radar_status')
+  if (error) {
+    logError('getRadarStatus', error)
+    return null
+  }
+  return parseRadarStatus(data)
 }

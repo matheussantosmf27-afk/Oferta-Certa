@@ -2,11 +2,11 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Truck } from 'lucide-react'
 import type { Product } from '@/types'
-import { formatCurrency } from '@/lib/price'
+import { displayDiscount, formatCurrency } from '@/lib/price'
 import { AddToCartButton } from '@/components/cart/add-to-cart-button'
 
 export function ProductCard({ product }: { product: Product }) {
-  const discount = product.discount_percentage && product.discount_percentage > 0 ? product.discount_percentage : null
+  const discount = displayDiscount(product)
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-xl border border-surface-300 bg-white transition hover:border-brand-500 hover:shadow-card">

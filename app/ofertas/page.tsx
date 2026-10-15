@@ -5,7 +5,7 @@ import { listProducts } from '@/services/catalog'
 
 export const metadata: Metadata = {
   title: 'Ofertas do dia',
-  description: 'Os maiores descontos do momento, em relação ao preço anterior informado pela loja.',
+  description: 'Os maiores descontos do momento, só quando o preço anterior foi confirmado pelo nosso histórico ou pelo preço dos outros vendedores.',
   alternates: { canonical: '/ofertas' },
 }
 
@@ -14,7 +14,7 @@ export default async function DealsPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
       <h1 className="font-display text-2xl font-bold tracking-tight text-night">Ofertas do dia</h1>
-      <p className="mt-1 text-sm text-slate-600">Ordenadas pelo maior desconto. O preço anterior é o informado pela loja.</p>
+      <p className="mt-1 text-sm text-slate-600">Ordenadas pelo maior desconto. Só entram descontos confirmados pelo nosso histórico ou compatíveis com o preço dos outros vendedores.</p>
       <div className="mt-6">
         {products.length ? (
           <ProductGrid products={products} />

@@ -31,7 +31,7 @@ export default function TermsPage() {
         <ul>
           <li>Os preços são conferidos automaticamente várias vezes ao dia, mas podem mudar a qualquer momento na loja.</li>
           <li>
-            O desconto só é exibido quando a loja informa um preço anterior maior que o atual. Não criamos descontos.
+            O desconto só é exibido quando o preço anterior informado pela loja é confirmado pelo nosso histórico ou é compatível com o que outros vendedores cobram. Não criamos descontos.
           </li>
           <li>Frete, estoque, prazos, garantia e trocas são definidos pela loja. Confira tudo antes de pagar.</li>
           <li>Descrições e fichas técnicas vêm do catálogo da loja; em caso de diferença, vale o que está na loja.</li>

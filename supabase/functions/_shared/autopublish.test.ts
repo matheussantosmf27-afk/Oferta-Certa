@@ -210,3 +210,10 @@ describe('lojas parceiras (Shopee, AliExpress)', () => {
     expect(affiliateUrlFor(candidate(), null)).toBeNull()
   })
 })
+
+describe('desconto não comprovado pelos outros vendedores', () => {
+  it('não publica sozinho quando o preço anterior passa do que o mercado cobra', () => {
+    const flagged = candidate({ score_breakdown: { desconto: 0, _alertas: ['preco_anterior_acima_mercado'] } })
+    expect(autoPublishBlockers(flagged, settings, RUN)).toContain('desconto_nao_comprovado')
+  })
+})

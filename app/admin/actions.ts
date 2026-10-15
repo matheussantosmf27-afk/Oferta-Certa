@@ -415,7 +415,7 @@ export async function saveProduct(formData: FormData) {
   }
 
   if (previousPrice === null || previousPrice !== payload.current_price) {
-    await supabase.from('product_price_history').insert({ product_id: productId, price: payload.current_price })
+    await supabase.from('product_price_history').insert({ product_id: productId, price: payload.current_price, source: 'manual' })
   }
 
   revalidatePath('/', 'layout')

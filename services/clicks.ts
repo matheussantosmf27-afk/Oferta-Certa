@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 
-function deviceType(userAgent: string | null): string | null {
+export function deviceType(userAgent: string | null): string | null {
   if (!userAgent) return null
   if (/bot|crawler|spider|preview/i.test(userAgent)) return 'bot'
   if (/mobile|android|iphone|ipod/i.test(userAgent)) return 'mobile'

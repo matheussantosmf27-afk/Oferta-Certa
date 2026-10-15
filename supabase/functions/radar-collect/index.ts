@@ -256,7 +256,7 @@ async function buildCandidate(db: Admin, product: Dict, bestSellers: BestSellers
   if (!candidate) return null
   const stats = marketStats(offers)
   if (stats) marketSeen.set(id, stats)
-  const { score, breakdown, flags } = scoreCandidate(candidate, { bestSellerPosition: bestSellers.get(id) ?? null })
+  const { score, breakdown, flags } = scoreCandidate(candidate, { bestSellerPosition: bestSellers.get(id) ?? null, market: stats })
   const results = Array.isArray(offers?.results) ? (offers.results as Dict[]) : []
   const best = results.find((offer) => offer.price === candidate.price)
   return {
