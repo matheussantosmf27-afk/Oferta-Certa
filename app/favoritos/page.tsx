@@ -15,7 +15,7 @@ export default async function FavoritesPage() {
   if (!user) {
     return (
       <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-semibold text-slate-950">Favoritos</h1>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-night">Favoritos</h1>
         <p className="mt-1 text-sm text-slate-600">
           Seus favoritos estão salvos só neste navegador.{' '}
           <Link href="/login?next=/favoritos" className="font-medium text-brand-700 hover:underline">
@@ -36,7 +36,7 @@ export default async function FavoritesPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold text-slate-950">Meus favoritos</h1>
+      <h1 className="font-display text-2xl font-bold tracking-tight text-night">Meus favoritos</h1>
       <LocalFavorites syncToAccount />
       <div className="mt-6">
         {products.length ? (

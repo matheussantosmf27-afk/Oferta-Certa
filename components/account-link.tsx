@@ -47,12 +47,12 @@ export function AccountLink({ variant = 'desktop' }: { variant?: 'desktop' | 'me
   if (email === undefined) return <span className="inline-block h-9 w-16" aria-hidden />
 
   return email ? (
-    <Link href="/minha-conta" className="inline-flex max-w-[12rem] items-center gap-1.5 truncate text-sm font-medium text-slate-700 hover:text-slate-950">
+    <Link href="/minha-conta" className="inline-flex max-w-[12rem] items-center gap-1.5 truncate text-sm font-medium text-white/80 hover:text-white">
       <User className="h-4 w-4 shrink-0" aria-hidden />
       <span className="truncate">{email}</span>
     </Link>
   ) : (
-    <Link href="/login" className="rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+    <Link href="/login" className="rounded-md bg-white px-3.5 py-2 text-sm font-semibold text-night hover:bg-brand-50">
       Entrar
     </Link>
   )

@@ -9,7 +9,7 @@ export function ProductCard({ product }: { product: Product }) {
   const discount = product.discount_percentage && product.discount_percentage > 0 ? product.discount_percentage : null
 
   return (
-    <article className="group flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white transition hover:border-brand-300 hover:shadow-card">
+    <article className="group flex flex-col overflow-hidden rounded-xl border border-surface-300 bg-white transition hover:border-brand-500 hover:shadow-card">
       <Link href={`/produto/${product.slug}`} className="relative block bg-white p-4">
         {product.image_url ? (
           <Image
@@ -24,11 +24,11 @@ export function ProductCard({ product }: { product: Product }) {
           <div className="flex h-40 items-center justify-center text-sm text-slate-400">Sem imagem</div>
         )}
         {discount ? (
-          <span className="absolute left-3 top-3 rounded bg-red-600 px-2 py-0.5 text-xs font-bold text-white">-{discount}%</span>
+          <span className="tabular absolute left-3 top-3 rounded-md bg-signal px-2 py-1 font-display text-xs font-bold leading-none text-white">−{discount}%</span>
         ) : null}
       </Link>
 
-      <div className="flex flex-1 flex-col border-t border-slate-100 p-3">
+      <div className="flex flex-1 flex-col border-t border-surface-200 p-3.5">
         <p className="text-xs font-medium text-slate-500">{product.marketplace_name}</p>
         <h3 className="mt-1 line-clamp-2 text-sm font-medium text-slate-900">
           <Link href={`/produto/${product.slug}`} className="hover:text-brand-700">
@@ -38,10 +38,10 @@ export function ProductCard({ product }: { product: Product }) {
 
         <div className="mt-auto pt-3">
           {product.old_price && discount ? (
-            <p className="text-xs text-slate-500 line-through">{formatCurrency(product.old_price)}</p>
+            <p className="tabular text-xs text-slate-500 line-through">{formatCurrency(product.old_price)}</p>
           ) : null}
           <div className="flex items-center justify-between gap-2">
-            <p className="text-lg font-bold text-slate-950">{formatCurrency(product.current_price)}</p>
+            <p className="tabular font-display text-base font-bold tracking-tight text-night sm:text-lg">{formatCurrency(product.current_price)}</p>
             <AddToCartButton productId={product.id} variant="compact" />
           </div>
           {product.free_shipping ? (

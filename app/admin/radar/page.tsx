@@ -90,12 +90,20 @@ export default async function RadarPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-5">
-      <PageTitle title="Radar de Ofertas" description="Revise os produtos encontrados. Nada é publicado sem o seu link de afiliado.">
-        <form action={runRadarNow}>
-          <SubmitButton variant="secondary" pendingText="Coletando…">
-            Executar coletor agora
-          </SubmitButton>
-        </form>
+      <PageTitle title="Radar de Ofertas" description="Revise os produtos encontrados. Nada é publicado sem o seu link de afiliado (na Shopee e no AliExpress, a API já gera o link com a sua conta).">
+        <div className="flex flex-wrap gap-2">
+          <form action={runRadarNow}>
+            <SubmitButton variant="secondary" pendingText="Coletando…">
+              Coletar Mercado Livre
+            </SubmitButton>
+          </form>
+          <form action={runRadarNow}>
+            <input type="hidden" name="source" value="parceiros" />
+            <SubmitButton variant="secondary" pendingText="Coletando…">
+              Coletar Shopee e AliExpress
+            </SubmitButton>
+          </form>
+        </div>
       </PageTitle>
 
       <Flash ok={params.ok} erro={params.erro ?? (error ? error.message : undefined)} />
@@ -243,6 +251,8 @@ export default async function RadarPage({ searchParams }: { searchParams: Promis
                           name="affiliate_url"
                           type="url"
                           required
+                          // Shopee e AliExpress: a API já gerou o link com a sua conta de afiliado.
+                          defaultValue={candidate.affiliate_url ?? ''}
                           placeholder="Cole aqui o SEU link de afiliado (https://…)"
                           className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
                         />

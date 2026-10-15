@@ -16,7 +16,7 @@ export default async function CategoriesPage() {
   const categories = await getCategories()
   return (
     <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold text-slate-950">Categorias</h1>
+      <h1 className="font-display text-2xl font-bold tracking-tight text-night">Categorias</h1>
       <div className="mt-6">
         {categories.length ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -24,7 +24,7 @@ export default async function CategoriesPage() {
               <Link
                 key={category.id}
                 href={`/categoria/${category.slug}`}
-                className="flex items-start gap-4 rounded-lg border border-slate-200 bg-white p-4 transition hover:border-brand-300"
+                className="flex items-start gap-4 rounded-xl border border-surface-300 bg-white p-4 transition hover:border-brand-300"
               >
                 <span className="text-3xl" aria-hidden>
                   {category.icon}

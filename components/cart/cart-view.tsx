@@ -69,7 +69,7 @@ export function CartView() {
     return (
       <EmptyState
         title="Seu carrinho está vazio"
-        description="Adicione ofertas ao carrinho para comparar e finalizar as compras no Mercado Livre."
+        description="Adicione ofertas ao carrinho para comparar e finalizar as compras nas lojas."
         action={
           <Link href="/ofertas" className="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
             Ver ofertas
@@ -87,7 +87,7 @@ export function CartView() {
         {rows.map((item) => {
           const product = products.get(item.productId) as Product
           return (
-            <li key={item.productId} className="flex gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:gap-4 sm:p-4">
+            <li key={item.productId} className="flex gap-3 rounded-xl border border-surface-300 bg-white p-3 sm:gap-4 sm:p-4">
               <Link href={`/produto/${product.slug}`} className="flex h-20 w-20 shrink-0 items-center justify-center sm:h-24 sm:w-24">
                 {product.image_url ? (
                   <Image src={product.image_url} alt="" width={96} height={96} className="max-h-full w-auto object-contain" />
@@ -137,7 +137,7 @@ export function CartView() {
                 >
                   {item.sentToCheckout ? (
                     <>
-                      <CheckCircle2 className="h-4 w-4 text-brand-600" aria-hidden /> Aberto no Mercado Livre · abrir de novo
+                      <CheckCircle2 className="h-4 w-4 text-brand-600" aria-hidden /> Aberto no {product.marketplace_name} · abrir de novo
                     </>
                   ) : (
                     <>
@@ -146,7 +146,7 @@ export function CartView() {
                   )}
                 </a>
                 {item.quantity > 1 ? (
-                  <p className="text-xs text-slate-500">Escolha {item.quantity} unidades na página do Mercado Livre antes de pagar.</p>
+                  <p className="text-xs text-slate-500">Escolha {item.quantity} unidades na página da loja antes de pagar.</p>
                 ) : null}
               </div>
             </li>
@@ -154,7 +154,7 @@ export function CartView() {
         })}
       </ul>
 
-      <aside className="h-fit space-y-4 rounded-lg border border-slate-200 bg-white p-5 lg:sticky lg:top-4">
+      <aside className="h-fit space-y-4 rounded-xl border border-surface-300 bg-white p-5 lg:sticky lg:top-4">
         <h2 className="text-lg font-semibold text-slate-950">Resumo</h2>
         <dl className="space-y-1 text-sm">
           <div className="flex justify-between">
@@ -166,7 +166,7 @@ export function CartView() {
             <dd className="font-bold text-slate-950">{formatCurrency(cartTotal(rows, prices))}</dd>
           </div>
         </dl>
-        <p className="text-xs text-slate-500">Preços conferidos pelo Oferta Certa. Frete, estoque e valor final são confirmados pelo Mercado Livre.</p>
+        <p className="text-xs text-slate-500">Preços conferidos pelo Oferta Certa. Frete, estoque e valor final são confirmados por cada loja.</p>
 
         {next ? (
           <a
@@ -181,15 +181,15 @@ export function CartView() {
           </a>
         ) : (
           <p className="rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-800">
-            Todos os itens foram abertos no Mercado Livre. Conclua o pagamento por lá.
+            Todos os itens foram abertos nas lojas. Conclua o pagamento por lá.
           </p>
         )}
 
         <div className="flex gap-2 rounded-md bg-surface-100 p-3 text-xs leading-5 text-slate-600">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-700" aria-hidden />
           <p>
-            O pagamento e a entrega são feitos pelo <strong>Mercado Livre</strong>, com a proteção de compra deles. Cada produto abre na página do
-            vendedor no Mercado Livre para você concluir. O Oferta Certa não recebe seu pagamento nem dados de cartão.
+            O pagamento e a entrega são feitos pela loja de cada produto (Mercado Livre, Shopee, AliExpress ou Amazon), com a proteção de compra
+            dela. Cada produto abre na página do vendedor para você concluir. O Oferta Certa não recebe seu pagamento nem dados de cartão.
           </p>
         </div>
       </aside>

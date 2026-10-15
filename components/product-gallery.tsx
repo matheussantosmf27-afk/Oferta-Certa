@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useState } from 'react'
 
-/** Foto principal com miniaturas clicáveis (fotos do catálogo do Mercado Livre). */
+/** Foto principal com miniaturas clicáveis (fotos do catálogo da loja). */
 export function ProductGallery({ images, alt }: { images: string[]; alt: string }) {
   const [active, setActive] = useState(0)
   if (!images.length) {

@@ -114,7 +114,7 @@ export interface ProductSpec {
   value: string
 }
 
-/** Destaques e ficha técnica de um produto ativo (vindos do catálogo do Mercado Livre). */
+/** Destaques e ficha técnica de um produto ativo (vindos do catálogo da loja). */
 export async function getProductDetails(productId: string): Promise<{ features: string[]; specs: ProductSpec[] }> {
   const empty = { features: [], specs: [] }
   if (!isUuid(productId)) return empty

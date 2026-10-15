@@ -2,7 +2,7 @@ import './globals.css'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Script from 'next/script'
-import { Inter } from 'next/font/google'
+import { Instrument_Sans, Unbounded } from 'next/font/google'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import { SITE_NAME, getSiteUrl } from '@/lib/site'
@@ -10,7 +10,9 @@ import { SITE_NAME, getSiteUrl } from '@/lib/site'
 // Cabeçalho (categorias) e rodapé consultam o banco: toda página estática é renovada a cada 5 minutos.
 export const revalidate = 300
 
-const inter = Inter({ subsets: ['latin'] })
+// Unbounded (larga, geométrica) para marca, títulos e preços; Instrument Sans para leitura.
+const display = Unbounded({ subsets: ['latin'], variable: '--font-display', weight: ['500', '700'] })
+const body = Instrument_Sans({ subsets: ['latin'], variable: '--font-body' })
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
@@ -26,10 +28,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR">
-      <body className={inter.className}>
+    <html lang="pt-BR" className={`${display.variable} ${body.variable}`}>
+      <body className="font-sans">
         <SiteHeader />
-        <main className="min-h-[70vh] bg-surface-50 text-slate-900">{children}</main>
+        <main className="min-h-[70vh] bg-surface-100 text-slate-900">{children}</main>
         <SiteFooter />
         {/* Vercel Web Analytics: contagem de visitas agregada e sem cookies (só ativa em produção na Vercel). */}
         {process.env.VERCEL_ENV === 'production' ? (

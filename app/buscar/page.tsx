@@ -26,9 +26,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold text-slate-950">{query ? `Resultados para “${query}”` : 'Buscar ofertas'}</h1>
+      <h1 className="font-display text-2xl font-bold tracking-tight text-night">{query ? `Resultados para “${query}”` : 'Buscar ofertas'}</h1>
 
-      <form action="/buscar" method="get" className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
+      <form action="/buscar" method="get" className="mt-4 flex flex-wrap items-end gap-3 rounded-xl border border-surface-300 bg-white p-4">
         <div className="min-w-[12rem] flex-1">
           <label htmlFor="q" className="block text-sm font-medium text-slate-700">
             Produto ou marca

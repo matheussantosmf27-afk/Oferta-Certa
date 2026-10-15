@@ -1,4 +1,4 @@
-// Edge Function: coleta do Radar de Ofertas (Mercado Livre).
+// Edge Function: coleta do Radar de Ofertas (Mercado Livre e, com source='parceiros', Shopee e AliExpress).
 // Chamada pelo pg_cron (cabeçalho x-radar-secret) ou por um admin no painel (JWT do usuário).
 // Também conduz a conexão OAuth com o Mercado Livre (oauth_start / oauth_callback).
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
@@ -14,21 +14,38 @@ import {
 } from '../_shared/radar.ts'
 import {
   affiliateTagFrom,
-  buildMercadoLivreAffiliateUrl,
+  affiliateUrlFor,
+  MERCADO_LIVRE,
   selectAutoPublishBatch,
   type AutoPublishCandidate,
   type AutoPublishSettings,
 } from '../_shared/autopublish.ts'
+import {
+  aliexpressRequestUrl,
+  normalizeAliexpressProduct,
+  normalizeShopeeOffer,
+  parseAliexpressProducts,
+  parseShopeeResponse,
+  SHOPEE_ENDPOINT,
+  shopeeAuthHeader,
+  shopeeOfferQuery,
+  type PartnerCandidate,
+} from '../_shared/partners.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const ML_CLIENT_ID = Deno.env.get('ML_CLIENT_ID') ?? ''
 const ML_CLIENT_SECRET = Deno.env.get('ML_CLIENT_SECRET') ?? ''
+const SHOPEE_APP_ID = Deno.env.get('SHOPEE_APP_ID') ?? ''
+const SHOPEE_APP_SECRET = Deno.env.get('SHOPEE_APP_SECRET') ?? ''
+const ALIEXPRESS_APP_KEY = Deno.env.get('ALIEXPRESS_APP_KEY') ?? ''
+const ALIEXPRESS_APP_SECRET = Deno.env.get('ALIEXPRESS_APP_SECRET') ?? ''
+const ALIEXPRESS_TRACKING_ID = Deno.env.get('ALIEXPRESS_TRACKING_ID') ?? ''
 const SITE_URL = (Deno.env.get('SITE_URL') ?? 'https://oferta-certa-red.vercel.app').replace(/\/$/, '')
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/radar-collect/oauth/callback`
 const ML_API = 'https://api.mercadolibre.com'
 const ML_AUTH = 'https://auth.mercadolivre.com.br/authorization'
-const MARKETPLACE_SLUG = 'mercado-livre'
+const MARKETPLACE_SLUG = MERCADO_LIVRE
 const MAX_TERMS_PER_RUN = 12
 const MAX_PRODUCTS_PER_TERM = 20
 const MAX_BEST_SELLERS_PER_CATEGORY = 10
@@ -276,10 +293,13 @@ async function loadBestSellerSources(db: Admin, positions: BestSellers) {
 
 /** Busca no catálogo do ML o conteúdo (descrição, destaques, ficha, fotos) dos publicados que ainda estão sem descrição. */
 async function fillMissingContent(db: Admin) {
+  const { data: marketplace } = await db.from('marketplaces').select('id').eq('slug', MARKETPLACE_SLUG).maybeSingle()
+  if (!marketplace) return 0
   const { data: products, error } = await db
     .from('products')
     .select('id, external_id')
     .eq('status', 'active')
+    .eq('marketplace_id', marketplace.id)
     .or('description.is.null,description.eq.')
     .not('external_id', 'is', null)
     .limit(MAX_CONTENT_FILL_PER_RUN)
@@ -358,18 +378,18 @@ async function autoPublish(db: Admin, runId: string) {
   if (error) throw error
   if (!settings?.auto_publish_enabled) return { published: 0, errors: [] as { term: string; message: string }[] }
   const config = settings as AutoPublishSettings
+  // Etiqueta só é exigida para o Mercado Livre; Shopee e AliExpress trazem o link pronto da API.
   const tag = affiliateTagFrom(config)
-  if (!tag) return { published: 0, errors: [{ term: 'publicação automática', message: 'Etiqueta de afiliado não configurada.' }] }
 
-  const { count: publishedToday } = await db
-    .from('products')
-    .select('id', { count: 'exact', head: true })
-    .eq('publish_mode', 'auto')
-    .gte('published_at', startOfTodaySaoPaulo())
+  const [{ count: publishedToday }, { data: marketplaces }] = await Promise.all([
+    db.from('products').select('id', { count: 'exact', head: true }).eq('publish_mode', 'auto').gte('published_at', startOfTodaySaoPaulo()),
+    db.from('marketplaces').select('id, slug'),
+  ])
+  const slugById = new Map((marketplaces ?? []).map((m) => [m.id as string, m.slug as string]))
 
-  const { data: candidates, error: listError } = await db
+  const { data: rows, error: listError } = await db
     .from('candidate_products')
-    .select('id, status, is_demo, score, score_breakdown, image_url, price, original_price, suggested_category_id, last_run_id, product_id, permalink')
+    .select('id, status, is_demo, score, score_breakdown, image_url, price, original_price, suggested_category_id, last_run_id, product_id, permalink, affiliate_url, marketplace_id')
     .eq('status', 'pending')
     .eq('is_demo', false)
     .eq('last_run_id', runId)
@@ -377,12 +397,16 @@ async function autoPublish(db: Admin, runId: string) {
     .order('score', { ascending: false })
     .limit(200)
   if (listError) throw listError
+  const candidates = (rows ?? []).map((row) => ({ ...row, marketplace_slug: slugById.get(row.marketplace_id as string) ?? null })) as AutoPublishCandidate[]
 
-  const batch = selectAutoPublishBatch((candidates ?? []) as AutoPublishCandidate[], config, runId, publishedToday ?? 0)
+  const batch = selectAutoPublishBatch(candidates, config, runId, publishedToday ?? 0)
   const errors: { term: string; message: string }[] = []
+  if (!tag && candidates.some((c) => !c.marketplace_slug || c.marketplace_slug === MERCADO_LIVRE)) {
+    errors.push({ term: 'publicação automática', message: 'Etiqueta de afiliado do Mercado Livre não configurada.' })
+  }
   let published = 0
   for (const candidate of batch) {
-    const url = buildMercadoLivreAffiliateUrl(candidate.permalink, tag)
+    const url = affiliateUrlFor(candidate, tag)
     if (!url) continue
     const { error: publishError } = await db.rpc('publish_candidate_internal', {
       p_candidate_id: candidate.id,
@@ -457,7 +481,7 @@ async function collect(db: Admin, trigger: string) {
   try {
     const { data: terms, error } = await db
       .from('radar_search_terms')
-      .select('id, term, category_id, max_results, min_price')
+      .select('id, term, category_id, max_results, min_price, marketplaces')
       .eq('active', true)
       .order('last_run_at', { ascending: true, nullsFirst: true })
       .limit(MAX_TERMS_PER_RUN)
@@ -490,6 +514,8 @@ async function collect(db: Admin, trigger: string) {
     }
 
     for (const term of terms ?? []) {
+      // Termo desmarcado para o Mercado Livre no painel: só as lojas parceiras pesquisam.
+      if (Array.isArray(term.marketplaces) && !(term.marketplaces as string[]).includes(MARKETPLACE_SLUG)) continue
       try {
         const { found, items, belowMin: discarded } = await searchCatalog(db, term.term, term.max_results, term.min_price, bestSellers.positions)
         fetched += found
@@ -593,6 +619,240 @@ async function collect(db: Admin, trigger: string) {
   )
 }
 
+/* --------------------- Lojas parceiras (Shopee, AliExpress) -------------------- */
+
+const MAX_PARTNER_RESULTS = 20
+const MAX_PARTNER_REFRESH = 30
+
+type PartnerSlug = 'shopee' | 'aliexpress'
+
+interface PartnerProvider {
+  slug: PartnerSlug
+  name: string
+  search: (term: string, limit: number) => Promise<PartnerCandidate[]>
+  /** Reconsulta produtos publicados: id externo → candidato atual (ausente = sem oferta). */
+  lookup: (ids: string[]) => Promise<Map<string, PartnerCandidate>>
+}
+
+/** fetch com retry para 429/5xx (as APIs parceiras não usam o token do ML). */
+async function partnerFetch(url: string, init?: RequestInit): Promise<unknown> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(url, init)
+    if (response.ok) return await response.json()
+    if (shouldRetry(response.status) && attempt < 2) {
+      await sleep(backoffDelay(attempt))
+      continue
+    }
+    const detail = await response.text().catch(() => '')
+    throw new Error(`${new URL(url).hostname} respondeu ${response.status}: ${detail.slice(0, 160)}`)
+  }
+  throw new Error('Loja parceira não respondeu após várias tentativas')
+}
+
+function shopeeProvider(): PartnerProvider | null {
+  if (!SHOPEE_APP_ID || !SHOPEE_APP_SECRET) return null
+  const run = async (params: Parameters<typeof shopeeOfferQuery>[0]) => {
+    const payload = shopeeOfferQuery(params)
+    const body = await partnerFetch(SHOPEE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: await shopeeAuthHeader(SHOPEE_APP_ID, SHOPEE_APP_SECRET, payload) },
+      body: payload,
+    })
+    return parseShopeeResponse(body).map(normalizeShopeeOffer).filter((item): item is PartnerCandidate => item !== null)
+  }
+  return {
+    slug: 'shopee',
+    name: 'Shopee',
+    search: (term, limit) => run({ keyword: term, limit, sortType: 2 }),
+    lookup: async (ids) => {
+      const found = new Map<string, PartnerCandidate>()
+      // A API não aceita lote de itemId: uma consulta por produto, com pausa curta.
+      for (const id of ids) {
+        const [item] = (await run({ itemId: id, limit: 1 })).filter((candidate) => candidate.external_id === id)
+        if (item) found.set(id, item)
+        await sleep(150)
+      }
+      return found
+    },
+  }
+}
+
+function aliexpressProvider(): PartnerProvider | null {
+  if (!ALIEXPRESS_APP_KEY || !ALIEXPRESS_APP_SECRET || !ALIEXPRESS_TRACKING_ID) return null
+  const credentials = { appKey: ALIEXPRESS_APP_KEY, secret: ALIEXPRESS_APP_SECRET, trackingId: ALIEXPRESS_TRACKING_ID }
+  const run = async (method: string, params: Record<string, string>) => {
+    const url = await aliexpressRequestUrl(method, params, credentials)
+    const body = await partnerFetch(url)
+    return parseAliexpressProducts(body).map(normalizeAliexpressProduct).filter((item): item is PartnerCandidate => item !== null)
+  }
+  return {
+    slug: 'aliexpress',
+    name: 'AliExpress',
+    search: (term, limit) =>
+      run('aliexpress.affiliate.product.query', { keywords: term, page_no: '1', page_size: String(limit), sort: 'LAST_VOLUME_DESC' }),
+    lookup: async (ids) => {
+      const found = new Map<string, PartnerCandidate>()
+      for (let index = 0; index < ids.length; index += 20) {
+        const chunk = ids.slice(index, index + 20)
+        for (const item of await run('aliexpress.affiliate.productdetail.get', { product_ids: chunk.join(',') })) found.set(item.external_id, item)
+      }
+      return found
+    },
+  }
+}
+
+/** Reconsulta os publicados da loja que não apareceram nesta coleta (preço novo ou ausência). */
+async function refreshPartner(db: Admin, provider: PartnerProvider, seen: Set<string>) {
+  const { data: marketplace } = await db.from('marketplaces').select('id').eq('slug', provider.slug).maybeSingle()
+  if (!marketplace) return { refreshed: 0, expired: 0 }
+  const { data: products, error } = await db
+    .from('products')
+    .select('id, external_id')
+    .eq('status', 'active')
+    .eq('marketplace_id', marketplace.id)
+    .not('external_id', 'is', null)
+    .order('offer_checked_at', { ascending: true, nullsFirst: true })
+    .limit(MAX_PARTNER_REFRESH + seen.size)
+  if (error) throw error
+  const pending = (products ?? []).filter((product) => !seen.has(product.external_id as string)).slice(0, MAX_PARTNER_REFRESH)
+  if (!pending.length) return { refreshed: 0, expired: 0 }
+
+  const found = await provider.lookup(pending.map((product) => product.external_id as string))
+  const items = pending.map((product) => {
+    const current = found.get(product.external_id as string)
+    return current
+      ? { product_id: product.id, available: true, price: current.price, original_price: current.original_price, free_shipping: current.free_shipping }
+      : { product_id: product.id, available: false }
+  })
+  const { data, error: refreshError } = await db.rpc('radar_refresh_products', { p_items: items }).maybeSingle()
+  if (refreshError) throw refreshError
+  const row = data as { refreshed?: number; expired?: number } | null
+  return { refreshed: row?.refreshed ?? 0, expired: row?.expired ?? 0 }
+}
+
+/** Coleta das lojas parceiras configuradas: busca os termos do Radar, atualiza publicados e publica os elegíveis. */
+async function collectPartners(db: Admin, trigger: string) {
+  const providers = [shopeeProvider(), aliexpressProvider()].filter((provider): provider is PartnerProvider => provider !== null)
+  if (!providers.length) {
+    return json({ message: 'Nenhuma loja parceira configurada (faltam as chaves da Shopee e/ou do AliExpress).' }, 200)
+  }
+
+  const { data: runId, error: beginError } = await db.rpc('radar_begin_run', { p_trigger: trigger })
+  if (beginError) throw beginError
+  if (!runId) return json({ message: 'Já existe uma coleta em andamento.' }, 409)
+  await db.from('radar_runs').update({ source: 'parceiros' }).eq('id', runId)
+
+  const errors: { term: string; message: string }[] = []
+  let fetched = 0
+  let upserted = 0
+  let belowMin = 0
+  let refreshed = 0
+  let expired = 0
+  let autoPublished = 0
+  let termsCount = 0
+  let fatal: string | null = null
+
+  try {
+    const { data: terms, error } = await db
+      .from('radar_search_terms')
+      .select('id, term, category_id, max_results, min_price, marketplaces')
+      .eq('active', true)
+      .order('last_run_at', { ascending: true, nullsFirst: true })
+      .limit(MAX_TERMS_PER_RUN)
+    if (error) throw error
+    termsCount = terms?.length ?? 0
+
+    for (const provider of providers) {
+      const seen = new Set<string>()
+      for (const term of terms ?? []) {
+        const wanted = Array.isArray(term.marketplaces) ? (term.marketplaces as string[]) : []
+        if (!wanted.includes(provider.slug)) continue
+        try {
+          const found = await provider.search(term.term as string, Math.min(MAX_PARTNER_RESULTS, (term.max_results as number) ?? MAX_PARTNER_RESULTS))
+          fetched += found.length
+          const kept = found.filter((item) => !belowMinPrice(item.price, term.min_price as number | null))
+          belowMin += found.length - kept.length
+          const items = kept.map((item) => {
+            const { score, breakdown, flags } = scoreCandidate(item)
+            return {
+              ...item,
+              score,
+              score_breakdown: { ...breakdown, ...(flags.length ? { _alertas: flags } : {}) },
+              raw: { source: provider.slug, sold_quantity: item.sold_quantity, rating: item.rating },
+            }
+          })
+          if (items.length) {
+            const { data: count, error: upsertError } = await db.rpc('radar_upsert_candidates', {
+              p_marketplace_slug: provider.slug,
+              p_search_term: term.term,
+              p_category_id: term.category_id,
+              p_items: items,
+              p_run_id: runId,
+            })
+            if (upsertError) throw upsertError
+            upserted += count ?? 0
+            for (const item of items) seen.add(item.external_id)
+          }
+        } catch (termError) {
+          const message = termError instanceof Error ? termError.message : String(termError)
+          errors.push({ term: `${provider.name}: ${term.term}`, message })
+          log('warn', 'termo parceiro falhou', { provider: provider.slug, term: term.term, message })
+          // Chave inválida: não adianta tentar os outros termos desta loja.
+          if (/signature|assinatura|credential|app_?key|invalid|401|403/i.test(message)) break
+        }
+        await sleep(300)
+      }
+
+      try {
+        const result = await refreshPartner(db, provider, seen)
+        refreshed += result.refreshed
+        expired += result.expired
+      } catch (refreshError) {
+        errors.push({ term: `${provider.name}: acompanhamento de preço`, message: refreshError instanceof Error ? refreshError.message : String(refreshError) })
+      }
+    }
+
+    try {
+      const result = await autoPublish(db, runId)
+      autoPublished = result.published
+      errors.push(...result.errors.filter((item) => !/Mercado Livre não configurada/.test(item.message)))
+    } catch (publishError) {
+      errors.push({ term: 'publicação automática', message: publishError instanceof Error ? publishError.message : String(publishError) })
+    }
+  } catch (runError) {
+    fatal = runError instanceof Error ? runError.message : String(runError)
+  } finally {
+    const status = fatal ? 'error' : errors.length ? (upserted > 0 ? 'partial' : 'error') : 'success'
+    const summary = [
+      `Lojas parceiras (${providers.map((provider) => provider.name).join(', ')}): ${upserted} candidatos atualizados`,
+      belowMin ? `${belowMin} abaixo do preço mínimo` : '',
+      refreshed ? `${refreshed} preços reconsultados` : '',
+      expired ? `${expired} inativados sem oferta` : '',
+      autoPublished ? `${autoPublished} publicados automaticamente` : '',
+      errors.length ? `${errors.length} erro(s)` : '',
+    ].filter(Boolean).join(', ')
+    await db
+      .from('radar_runs')
+      .update({
+        status,
+        finished_at: new Date().toISOString(),
+        terms_count: termsCount,
+        fetched_count: fetched,
+        upserted_count: upserted,
+        auto_published_count: autoPublished,
+        refreshed_count: refreshed,
+        expired_count: expired,
+        errors,
+        message: fatal ?? summary,
+      })
+      .eq('id', runId)
+    log(status === 'success' ? 'info' : 'warn', 'coleta parceiros finalizada', { runId, status, fetched, upserted, refreshed, expired, autoPublished, errors: errors.length })
+  }
+
+  const failed = Boolean(fatal) || (errors.length > 0 && upserted === 0)
+  return json({ message: fatal ?? `Lojas parceiras: ${upserted} candidatos atualizados${autoPublished ? `, ${autoPublished} publicados` : ''}${errors.length ? `, ${errors.length} erro(s)` : ''}.` }, failed ? 502 : 200)
+}
+
 /* --------------------------------- OAuth --------------------------------- */
 
 async function oauthStart(db: Admin) {
@@ -645,13 +905,14 @@ Deno.serve(async (req) => {
     const caller = await authorize(req, db)
     if (!caller) return json({ error: 'Não autorizado' }, 401)
 
-    const body = (await req.json().catch(() => ({}))) as { action?: string; trigger?: string }
+    const body = (await req.json().catch(() => ({}))) as { action?: string; trigger?: string; source?: string }
     if (body.action === 'oauth_start') {
       if (caller !== 'admin') return json({ error: 'Apenas administradores' }, 403)
       return await oauthStart(db)
     }
 
     const trigger = caller === 'cron' ? 'schedule' : 'manual'
+    if (body.source === 'parceiros') return await collectPartners(db, trigger)
     return await collect(db, trigger)
   } catch (error) {
     log('error', 'falha inesperada', { message: error instanceof Error ? error.message : String(error) })

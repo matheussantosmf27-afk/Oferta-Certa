@@ -11,6 +11,7 @@ import { PriceHistory } from '@/components/price-history'
 import { AddToCartButton } from '@/components/cart/add-to-cart-button'
 import { formatCurrency } from '@/lib/price'
 import { getSiteUrl } from '@/lib/site'
+import { storeNotice } from '@/lib/stores'
 
 // Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
 export const revalidate = 300
@@ -79,14 +80,14 @@ export default async function ProductPage({ params }: Props) {
       </nav>
 
       <div className="mt-3 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-lg border border-slate-200 bg-white p-6">
+        <div className="rounded-xl border border-surface-300 bg-white p-6">
           <ProductGallery images={images} alt={product.name} />
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <div className="rounded-xl border border-surface-300 bg-white p-6">
             <p className="text-sm font-medium text-slate-500">{product.marketplace_name}</p>
-            <h1 className="mt-1 text-xl font-semibold leading-snug text-slate-950 sm:text-2xl">{product.name}</h1>
+            <h1 className="mt-1 text-xl font-semibold leading-snug text-night sm:text-2xl">{product.name}</h1>
             {product.brand ? <p className="mt-1 text-sm text-slate-600">Marca: {product.brand}</p> : null}
 
             {product.rating !== null && product.reviews_count ? (
@@ -100,10 +101,10 @@ export default async function ProductPage({ params }: Props) {
               {product.old_price && discount ? (
                 <p className="text-sm text-slate-500">
                   <span className="line-through">{formatCurrency(product.old_price)}</span>
-                  <span className="ml-2 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">-{discount}%</span>
+                  <span className="tabular ml-2 rounded-md bg-signal px-2 py-1 font-display text-xs font-bold text-white">−{discount}%</span>
                 </p>
               ) : null}
-              <p className="text-3xl font-bold text-slate-950">{formatCurrency(product.current_price)}</p>
+              <p className="tabular mt-1 font-display text-3xl font-bold tracking-tight text-night sm:text-4xl">{formatCurrency(product.current_price)}</p>
               {product.installments ? <p className="mt-1 text-sm text-slate-600">{product.installments}</p> : null}
               <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-slate-700">
                 <Truck className="h-4 w-4 text-brand-700" aria-hidden />
@@ -127,12 +128,15 @@ export default async function ProductPage({ params }: Props) {
                 Pagamento e entrega pelo {product.marketplace_name}, com a proteção de compra deles. Você finaliza a compra na página do
                 vendedor.
               </p>
+              {storeNotice(product.marketplace_slug) ? (
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{storeNotice(product.marketplace_slug)}</p>
+              ) : null}
               <FavoriteButton productId={product.id} />
               <ShareActions url={productUrl} />
             </div>
           </div>
 
-          <div className="flex gap-2 rounded-lg border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-600">
+          <div className="flex gap-2 rounded-xl border border-surface-300 bg-white p-4 text-xs leading-5 text-slate-600">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
             <p>
               Preço conferido em {updated.toLocaleDateString('pt-BR')} às{' '}
@@ -148,9 +152,9 @@ export default async function ProductPage({ params }: Props) {
       </div>
 
       {product.description || details.features.length ? (
-        <section className="mt-8 rounded-lg border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-950">Sobre o produto</h2>
-          {product.description ? <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">{product.description}</p> : null}
+        <section className="mt-8 rounded-xl border border-surface-300 bg-white p-6">
+          <h2 className="font-display text-lg font-bold tracking-tight text-night">Sobre o produto</h2>
+          {product.description ? <p className="mt-3 max-w-3xl whitespace-pre-line text-[0.95rem] leading-7 text-slate-700">{product.description}</p> : null}
           {details.features.length ? (
             <ul className="mt-4 space-y-2">
               {details.features.map((feature) => (
@@ -166,8 +170,8 @@ export default async function ProductPage({ params }: Props) {
       ) : null}
 
       {details.specs.length ? (
-        <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-slate-950">Ficha técnica</h2>
+        <section className="mt-6 rounded-xl border border-surface-300 bg-white p-6">
+          <h2 className="font-display text-lg font-bold tracking-tight text-night">Ficha técnica</h2>
           <dl className="mt-3 divide-y divide-slate-100 text-sm">
             {details.specs.map((spec) => (
               <div key={spec.name} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 py-2">
@@ -181,7 +185,7 @@ export default async function ProductPage({ params }: Props) {
 
       {related.length ? (
         <section className="mt-10 space-y-4">
-          <h2 className="text-xl font-semibold text-slate-950">Mais ofertas de {product.category_name}</h2>
+          <h2 className="font-display text-xl font-bold tracking-tight text-night">Mais ofertas de {product.category_name}</h2>
           <ProductGrid products={related} />
         </section>
       ) : null}
