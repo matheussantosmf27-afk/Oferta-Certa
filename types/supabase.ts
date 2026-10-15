@@ -937,6 +937,10 @@ export type Database = {
           marketplace_id: string
         }[]
       }
+      get_public_product_insights: {
+        Args: { p_product_id: string }
+        Returns: Json
+      }
       search_public_products: {
         Args: { p_query: string; p_limit?: number }
         Returns: { id: string; rank: number }[]

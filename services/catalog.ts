@@ -217,3 +217,50 @@ export const SORT_OPTIONS: { value: ProductSort; label: string }[] = [
 export function parseSort(value: string | undefined): ProductSort {
   return SORT_OPTIONS.some((option) => option.value === value) ? (value as ProductSort) : 'relevancia'
 }
+
+export interface ProductInsights {
+  market: { offers: number; min: number; median: number; max: number; checked_at: string } | null
+  seller: { name: string | null; level: number | null; power_seller: string | null; sales: number | null } | null
+  official_store: boolean | null
+  warranty: string | null
+  history: { day: string; offers: number; min: number; median: number; max: number }[]
+}
+
+/** Raio-X do preço: faixa entre vendedores, reputação do vendedor e histórico diário (API oficial da loja). */
+export async function getProductInsights(productId: string): Promise<ProductInsights | null> {
+  if (!isUuid(productId)) return null
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('get_public_product_insights', { p_product_id: productId })
+  if (error) {
+    logError('getProductInsights', error)
+    return null
+  }
+  if (!data || typeof data !== 'object') return null
+  const raw = data as Record<string, unknown>
+  const toNum = (value: unknown) => (value === null || value === undefined ? null : Number(value))
+  const market = raw.market as Record<string, unknown> | null
+  return {
+    market:
+      market && toNum(market.offers) && toNum(market.min)
+        ? {
+            offers: Number(market.offers),
+            min: Number(market.min),
+            median: Number(market.median),
+            max: Number(market.max),
+            checked_at: String(market.checked_at),
+          }
+        : null,
+    seller: (raw.seller as ProductInsights['seller']) ?? null,
+    official_store: typeof raw.official_store === 'boolean' ? raw.official_store : null,
+    warranty: typeof raw.warranty === 'string' ? raw.warranty : null,
+    history: Array.isArray(raw.history)
+      ? (raw.history as Record<string, unknown>[]).map((row) => ({
+          day: String(row.day),
+          offers: Number(row.offers),
+          min: Number(row.min),
+          median: Number(row.median),
+          max: Number(row.max),
+        }))
+      : [],
+  }
+}

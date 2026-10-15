@@ -19,7 +19,7 @@ export function PriceHistory({ history }: { history: PricePoint[] }) {
 
   return (
     <section className="rounded-xl border border-surface-300 bg-white p-6" aria-labelledby="historico-preco">
-      <h2 id="historico-preco" className="text-lg font-semibold text-slate-950">Histórico de preço</h2>
+      <h2 id="historico-preco" className="font-display text-lg font-bold tracking-tight text-night">Histórico de preço</h2>
       {points.length > 1 ? (
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="mt-4 h-20 w-full" role="img" aria-label="Gráfico da variação de preço">
           <polyline points={coords.join(' ')} fill="none" stroke="currentColor" strokeWidth="2" className="text-brand-600" />
@@ -28,15 +28,15 @@ export function PriceHistory({ history }: { history: PricePoint[] }) {
       <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-slate-500">Menor preço registrado</dt>
-          <dd className="font-semibold text-slate-950">{formatCurrency(min)}</dd>
+          <dd className="tabular font-semibold text-slate-950">{formatCurrency(min)}</dd>
         </div>
         <div>
           <dt className="text-slate-500">Maior preço registrado</dt>
-          <dd className="font-semibold text-slate-950">{formatCurrency(max)}</dd>
+          <dd className="tabular font-semibold text-slate-950">{formatCurrency(max)}</dd>
         </div>
         <div>
           <dt className="text-slate-500">Acompanhando desde</dt>
-          <dd className="font-semibold text-slate-950">{date(points[0].recorded_at)}</dd>
+          <dd className="tabular font-semibold text-slate-950">{date(points[0].recorded_at)}</dd>
         </div>
       </dl>
       {fewData ? (

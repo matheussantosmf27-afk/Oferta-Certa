@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  marketStats,
+  sellerReputation,
   backoffDelay,
   belowMinPrice,
   bestSellerBonus,
@@ -234,5 +236,54 @@ describe('extractProductContent', () => {
     const candidate = normalizeMercadoLivreCatalogProduct(product, { paging: { total: 1 }, results: [{ price: 1339.9, currency_id: 'BRL', condition: 'new', shipping: {} }] })
     expect(candidate?.description).toBe('Celular com IA, 256GB e câmera de 50MP.')
     expect(candidate?.gallery).toHaveLength(2)
+  })
+})
+
+describe('marketStats', () => {
+  const offers = {
+    results: [
+      { price: 120, currency_id: 'BRL', condition: 'new', seller_id: 2, warranty: 'Garantia de fábrica: 12 meses' },
+      { price: 100, currency_id: 'BRL', condition: 'new', seller_id: 1, official_store_id: 55 },
+      { price: 80, currency_id: 'BRL', condition: 'used', seller_id: 3 },
+      { price: 140, currency_id: 'BRL', condition: 'new', seller_id: 4 },
+      { price: 90, currency_id: 'USD', condition: 'new', seller_id: 5 },
+    ],
+  }
+
+  it('resume só ofertas novas em reais, com a mais barata como referência', () => {
+    expect(marketStats(offers)).toEqual({
+      offers_count: 3,
+      min: 100,
+      median: 120,
+      max: 140,
+      best_seller_id: 1,
+      official_store: true,
+      warranty: null,
+    })
+  })
+
+  it('usa a média dos dois do meio quando a quantidade é par', () => {
+    expect(marketStats({ results: [{ price: 10 }, { price: 20 }] })?.median).toBe(15)
+  })
+
+  it('sem ofertas válidas devolve null', () => {
+    expect(marketStats({ results: [] })).toBeNull()
+    expect(marketStats(null)).toBeNull()
+  })
+})
+
+describe('sellerReputation', () => {
+  it('lê nível, MercadoLíder e vendas', () => {
+    const user = { nickname: 'LOJA X', seller_reputation: { level_id: '5_green', power_seller_status: 'platinum', transactions: { total: 57490 } } }
+    expect(sellerReputation(user)).toEqual({ name: 'LOJA X', level: 5, power_seller: 'platinum', sales: 57490 })
+  })
+
+  it('campos ausentes ficam nulos', () => {
+    expect(sellerReputation({ nickname: 'Y', seller_reputation: { level_id: null, power_seller_status: 'outro' } })).toEqual({
+      name: 'Y',
+      level: null,
+      power_seller: null,
+      sales: null,
+    })
   })
 })
