@@ -294,3 +294,67 @@ export async function mapWithConcurrency<T, R>(items: T[], limit: number, task: 
   await Promise.all(workers)
   return results
 }
+
+/* ----------------------- Preço entre vendedores e reputação ----------------------- */
+
+export interface MarketStats {
+  offers_count: number
+  min: number
+  median: number
+  max: number
+  /** Oferta mais barata (a que o site mostra). */
+  best_seller_id: number | null
+  official_store: boolean
+  warranty: string | null
+}
+
+/**
+ * Resumo das ofertas novas, em reais, de todos os vendedores de um produto do catálogo
+ * (resposta de /products/{id}/items). Sem ofertas válidas, null.
+ */
+export function marketStats(offers: unknown): MarketStats | null {
+  const results = isDict(offers) && Array.isArray(offers.results) ? offers.results.filter(isDict) : []
+  const valid = results
+    .filter((offer) => (str(offer.currency_id) ?? 'BRL') === 'BRL' && (str(offer.condition) ?? 'new') === 'new')
+    .map((offer) => ({ offer, price: num(offer.price) }))
+    .filter((entry): entry is { offer: Dict; price: number } => entry.price !== null && entry.price > 0)
+    .sort((a, b) => a.price - b.price)
+  if (!valid.length) return null
+  const prices = valid.map((entry) => entry.price)
+  const middle = Math.floor(prices.length / 2)
+  const median = prices.length % 2 ? prices[middle] : (prices[middle - 1] + prices[middle]) / 2
+  const best = valid[0].offer
+  return {
+    offers_count: prices.length,
+    min: prices[0],
+    median: Math.round(median * 100) / 100,
+    max: prices[prices.length - 1],
+    best_seller_id: num(best.seller_id),
+    official_store: num(best.official_store_id) !== null,
+    warranty: str(best.warranty)?.slice(0, 120) ?? null,
+  }
+}
+
+export interface SellerReputation {
+  name: string | null
+  /** 1 (vermelho) a 5 (verde), como no termômetro do Mercado Livre. */
+  level: number | null
+  /** MercadoLíder: platinum, gold ou silver. */
+  power_seller: string | null
+  sales: number | null
+}
+
+/** Reputação pública do vendedor (resposta de /users/{id}). */
+export function sellerReputation(user: unknown): SellerReputation | null {
+  if (!isDict(user)) return null
+  const reputation = isDict(user.seller_reputation) ? user.seller_reputation : {}
+  const levelMatch = /^([1-5])_/.exec(str(reputation.level_id) ?? '')
+  const power = str(reputation.power_seller_status)
+  const transactions = isDict(reputation.transactions) ? num(reputation.transactions.total) : null
+  return {
+    name: str(user.nickname)?.slice(0, 80) ?? null,
+    level: levelMatch ? Number(levelMatch[1]) : null,
+    power_seller: power && ['platinum', 'gold', 'silver'].includes(power) ? power : null,
+    sales: transactions !== null && transactions >= 0 ? Math.round(transactions) : null,
+  }
+}

@@ -2,12 +2,13 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Check, ExternalLink, Info, ShieldCheck, Star, Truck } from 'lucide-react'
-import { getPriceHistory, getProductBySlug, getProductDetails, listProducts } from '@/services/catalog'
+import { getPriceHistory, getProductBySlug, getProductDetails, getProductInsights, listProducts } from '@/services/catalog'
 import { ProductGallery } from '@/components/product-gallery'
 import { FavoriteButton } from '@/components/favorite-button'
 import { ShareActions } from '@/components/share-actions'
 import { ProductGrid } from '@/components/product-card'
 import { PriceHistory } from '@/components/price-history'
+import { PriceXray } from '@/components/price-xray'
 import { AddToCartButton } from '@/components/cart/add-to-cart-button'
 import { formatCurrency } from '@/lib/price'
 import { getSiteUrl } from '@/lib/site'
@@ -43,10 +44,11 @@ export default async function ProductPage({ params }: Props) {
   const product = await getProductBySlug(slug)
   if (!product) notFound()
 
-  const [related, history, details] = await Promise.all([
+  const [related, history, details, insights] = await Promise.all([
     listProducts({ categorySlug: product.category_slug, excludeId: product.id, limit: 4 }),
     getPriceHistory(product.id),
     getProductDetails(product.id),
+    getProductInsights(product.id),
   ])
   const images = [...new Set([product.image_url, ...(product.gallery ?? [])].filter(Boolean))].slice(0, 8)
   const discount = product.discount_percentage && product.discount_percentage > 0 ? product.discount_percentage : null
@@ -139,7 +141,7 @@ export default async function ProductPage({ params }: Props) {
           <div className="flex gap-2 rounded-xl border border-surface-300 bg-white p-4 text-xs leading-5 text-slate-600">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
             <p>
-              Preço conferido em {updated.toLocaleDateString('pt-BR')} às{' '}
+              Preço conferido em {updated.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} às{' '}
               {updated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}. Valores e
               estoque podem mudar na loja. Podemos receber comissão por compras feitas por este link.
             </p>
@@ -147,7 +149,14 @@ export default async function ProductPage({ params }: Props) {
         </div>
       </div>
 
-      <div className="mt-8">
+      <div className={`mt-8 grid items-start gap-6 ${history.length && insights?.market ? 'lg:grid-cols-2' : ''}`}>
+        <PriceXray
+          price={product.current_price}
+          oldPrice={product.old_price}
+          marketplaceName={product.marketplace_name}
+          insights={insights}
+          history={history}
+        />
         <PriceHistory history={history} />
       </div>
 

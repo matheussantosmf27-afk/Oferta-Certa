@@ -7,10 +7,14 @@ import {
   belowMinPrice,
   extractProductContent,
   mapWithConcurrency,
+  marketStats,
   normalizeMercadoLivreCatalogProduct,
   parseHighlights,
   scoreCandidate,
+  sellerReputation,
   shouldRetry,
+  type MarketStats,
+  type SellerReputation,
 } from '../_shared/radar.ts'
 import {
   affiliateTagFrom,
@@ -52,6 +56,7 @@ const MAX_BEST_SELLERS_PER_CATEGORY = 10
 const MAX_REFRESH_PER_RUN = 60
 const MAX_SOURCES_PER_RUN = 12
 const MAX_CONTENT_FILL_PER_RUN = 25
+const MAX_SELLER_LOOKUPS_PER_RUN = 60
 const BEST_SELLERS_TERM = 'mais vendidos'
 const TOKEN_PROVIDER = 'mercadolivre'
 const STATE_PROVIDER = 'mercadolivre_oauth_state'
@@ -183,6 +188,62 @@ async function mlGet(db: Admin, path: string): Promise<Record<string, unknown> |
 }
 
 type Dict = Record<string, unknown>
+
+/** Resumo de preço entre vendedores de cada produto consultado nesta coleta (id do catálogo → resumo). */
+const marketSeen = new Map<string, MarketStats>()
+
+/**
+ * Raio-X do preço: grava, nos produtos publicados vistos nesta coleta, a faixa de preço entre
+ * vendedores e a reputação do vendedor da oferta mostrada (só dados públicos da API do ML).
+ */
+async function updateMarket(db: Admin) {
+  const ids = [...marketSeen.keys()]
+  if (!ids.length) return 0
+  const { data: marketplace } = await db.from('marketplaces').select('id').eq('slug', MARKETPLACE_SLUG).maybeSingle()
+  if (!marketplace) return 0
+
+  const published: { external_id: string; seller_name: string | null; market_checked_at: string | null }[] = []
+  for (let index = 0; index < ids.length; index += 200) {
+    const { data, error } = await db
+      .from('products')
+      .select('external_id, seller_name, market_checked_at')
+      .eq('marketplace_id', marketplace.id)
+      .eq('status', 'active')
+      .in('external_id', ids.slice(index, index + 200))
+    if (error) throw error
+    published.push(...((data ?? []) as typeof published))
+  }
+  if (!published.length) return 0
+
+  // Reputação: só para quem ainda não tem ou foi conferido há mais de 3 dias, com limite por coleta.
+  const stale = Date.now() - 3 * 86_400_000
+  const sellerIds = [
+    ...new Set(
+      published
+        .filter((row) => !row.seller_name || !row.market_checked_at || new Date(row.market_checked_at).getTime() < stale)
+        .map((row) => marketSeen.get(row.external_id)?.best_seller_id)
+        .filter((id): id is number => typeof id === 'number')
+    ),
+  ].slice(0, MAX_SELLER_LOOKUPS_PER_RUN)
+  const sellers = new Map<number, SellerReputation | null>()
+  await mapWithConcurrency(sellerIds, 4, async (id) => {
+    try {
+      sellers.set(id, sellerReputation(await mlGet(db, `/users/${id}`)))
+    } catch {
+      sellers.set(id, null)
+    }
+  })
+
+  const items = published.map((row) => {
+    const stats = marketSeen.get(row.external_id) as MarketStats
+    const seller = stats.best_seller_id !== null ? sellers.get(stats.best_seller_id) : undefined
+    return { external_id: row.external_id, ...stats, ...(seller ? { seller } : {}) }
+  })
+  const { data, error } = await db.rpc('radar_update_market', { p_marketplace_slug: MARKETPLACE_SLUG, p_items: items })
+  if (error) throw error
+  return (data as number | null) ?? 0
+}
+
 /** Posição de cada produto nas listas de mais vendidos desta coleta (id do catálogo → posição). */
 type BestSellers = Map<string, number>
 
@@ -193,6 +254,8 @@ async function buildCandidate(db: Admin, product: Dict, bestSellers: BestSellers
   const offers = await mlGet(db, `/products/${encodeURIComponent(id)}/items?limit=20`)
   const candidate = normalizeMercadoLivreCatalogProduct(product, offers)
   if (!candidate) return null
+  const stats = marketStats(offers)
+  if (stats) marketSeen.set(id, stats)
   const { score, breakdown, flags } = scoreCandidate(candidate, { bestSellerPosition: bestSellers.get(id) ?? null })
   const results = Array.isArray(offers?.results) ? (offers.results as Dict[]) : []
   const best = results.find((offer) => offer.price === candidate.price)
@@ -346,6 +409,8 @@ async function refreshPublished(db: Admin, seen: Set<string>) {
     try {
       const offers = await mlGet(db, `/products/${encodeURIComponent(product.external_id as string)}/items?limit=20`)
       const candidate = normalizeMercadoLivreCatalogProduct({ id: product.external_id, name: product.name }, offers)
+      const stats = marketStats(offers)
+      if (stats) marketSeen.set(product.external_id as string, stats)
       return candidate
         ? { product_id: product.id, available: true, price: candidate.price, original_price: candidate.original_price, free_shipping: candidate.free_shipping }
         : { product_id: product.id, available: false }
@@ -476,7 +541,9 @@ async function collect(db: Admin, trigger: string) {
   let expired = 0
   let autoPublished = 0
   let contentFilled = 0
+  let marketUpdated = 0
   let fatal: string | null = null
+  marketSeen.clear()
 
   try {
     const { data: terms, error } = await db
@@ -565,6 +632,12 @@ async function collect(db: Admin, trigger: string) {
       }
 
       try {
+        marketUpdated = await updateMarket(db)
+      } catch (marketError) {
+        errors.push({ term: 'raio-X do preço', message: marketError instanceof Error ? marketError.message : String(marketError) })
+      }
+
+      try {
         contentFilled = await fillMissingContent(db)
       } catch (fillError) {
         errors.push({ term: 'conteúdo dos produtos', message: fillError instanceof Error ? fillError.message : String(fillError) })
@@ -589,6 +662,7 @@ async function collect(db: Admin, trigger: string) {
       expired ? `${expired} inativados sem vendedor` : '',
       autoPublished ? `${autoPublished} publicados automaticamente` : '',
       contentFilled ? `${contentFilled} produtos com conteúdo completado` : '',
+      marketUpdated ? `${marketUpdated} com preço entre vendedores` : '',
       errors.length ? `${errors.length} erro(s)` : '',
     ].filter(Boolean).join(', ')
     const message = fatal ?? summary
