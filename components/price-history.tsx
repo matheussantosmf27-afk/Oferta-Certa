@@ -18,7 +18,7 @@ export function PriceHistory({ history }: { history: PricePoint[] }) {
   const date = (value: string) => new Date(value).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6" aria-labelledby="historico-preco">
+    <section className="rounded-xl border border-surface-300 bg-white p-6" aria-labelledby="historico-preco">
       <h2 id="historico-preco" className="text-lg font-semibold text-slate-950">Histórico de preço</h2>
       {points.length > 1 ? (
         <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="mt-4 h-20 w-full" role="img" aria-label="Gráfico da variação de preço">

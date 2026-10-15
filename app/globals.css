@@ -4,8 +4,7 @@
 
 :root {
   color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background-color: #f8fafc;
+  background-color: #eef2ff;
 }
 
 html {
@@ -15,7 +14,9 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background: #f8fafc;
+  background: #eef2ff;
+  color: #0f1530;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -34,7 +35,34 @@ textarea {
   font: inherit;
 }
 
+:focus-visible {
+  outline: 2px solid #3f50ff;
+  outline-offset: 2px;
+}
+
 ::selection {
-  background: #c7d2fe;
-  color: #111827;
+  background: #c3ccff;
+  color: #0b1640;
+}
+
+/* Preços e números alinhados (tabulares) em toda a interface. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grade do console: linhas finas sobre a noite cobalto. */
+.console-grid {
+  background-image:
+    linear-gradient(rgba(124, 244, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 244, 255, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .motion-safe-only {
+    animation: none !important;
+  }
 }

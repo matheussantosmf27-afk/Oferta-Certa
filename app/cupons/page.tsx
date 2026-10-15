@@ -22,7 +22,7 @@ export default async function CouponsPage() {
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <p className="text-sm uppercase tracking-[0.35em] text-brand-700">{coupon.marketplace}</p>
-                  <h2 className="mt-2 text-2xl font-semibold text-slate-950">{coupon.title}</h2>
+                  <h2 className="mt-2 font-display text-2xl font-bold tracking-tight text-night">{coupon.title}</h2>
                 </div>
                 <div className="rounded-full bg-brand-100 px-4 py-2 text-sm font-semibold text-brand-700">{coupon.code}</div>
               </div>

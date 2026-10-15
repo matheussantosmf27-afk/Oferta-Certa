@@ -15,7 +15,7 @@ export default async function AccountPage() {
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">Minha conta</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-night">Minha conta</h1>
           <p className="mt-1 text-sm text-slate-600">{user.email}</p>
         </div>
         <form action={signOut}>
@@ -26,26 +26,26 @@ export default async function AccountPage() {
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        <Link href="/favoritos" className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 hover:border-brand-300">
+        <Link href="/favoritos" className="flex items-center gap-3 rounded-xl border border-surface-300 bg-white p-4 hover:border-brand-300">
           <Heart className="h-5 w-5 text-rose-500" aria-hidden />
           <span className="text-sm font-medium text-slate-900">Meus favoritos</span>
         </Link>
         {isAdmin ? (
-          <Link href="/admin" className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 hover:border-brand-300">
+          <Link href="/admin" className="flex items-center gap-3 rounded-xl border border-surface-300 bg-white p-4 hover:border-brand-300">
             <LayoutDashboard className="h-5 w-5 text-brand-700" aria-hidden />
             <span className="text-sm font-medium text-slate-900">Painel administrativo</span>
           </Link>
         ) : null}
       </div>
 
-      <section className="mt-8 rounded-lg border border-slate-200 bg-white p-6">
+      <section className="mt-8 rounded-xl border border-surface-300 bg-white p-6">
         <h2 className="text-lg font-semibold text-slate-950">Seus dados</h2>
         <div className="mt-4">
           <ProfileForm fullName={profile?.full_name ?? ''} marketingOptIn={profile?.marketing_opt_in ?? false} />
         </div>
       </section>
 
-      <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6">
+      <section className="mt-6 rounded-xl border border-surface-300 bg-white p-6">
         <h2 className="text-lg font-semibold text-slate-950">Alterar senha</h2>
         <div className="mt-4">
           <NewPasswordForm />

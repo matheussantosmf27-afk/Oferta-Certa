@@ -38,7 +38,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
       </nav>
       <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-950">{category.name}</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-night">{category.name}</h1>
           {category.description ? <p className="mt-1 text-sm text-slate-600">{category.description}</p> : null}
         </div>
         {products.length ? <SortForm action={`/categoria/${category.slug}`} sort={sort} /> : null}

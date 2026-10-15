@@ -1,5 +1,9 @@
 import type { Config } from 'tailwindcss'
 
+/**
+ * Identidade "Radar": console noturno em cobalto para a marca (cabeçalho, hero, rodapé)
+ * e catálogo claro em tons de gelo para leitura. O coral de sinal marca só o desconto.
+ */
 const config: Config = {
   content: [
     './app/**/*.{js,ts,jsx,tsx}',
@@ -10,36 +14,65 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Nova paleta: foco em confiança e energia comercial (tons verdes/teal)
+        // Cobalto elétrico: ações e links.
         brand: {
-          50: '#f3fbf8',
-          100: '#dff7ef',
-          200: '#bfefe0',
-          300: '#8fe0c6',
-          400: '#4fd3a7',
-          500: '#12b886',
-          600: '#0e9b6e',
-          700: '#0b7d56',
-          800: '#095e3f',
-          900: '#07462f'
+          50: '#eef1ff',
+          100: '#dfe4ff',
+          200: '#c3ccff',
+          300: '#9aa8ff',
+          400: '#6878ff',
+          500: '#3f50ff',
+          600: '#2340ff',
+          700: '#1a2fd1',
+          800: '#1625a3',
+          900: '#121e7a'
         },
-        // superfícies claras para leitura prolongada
+        // Gelo: fundo do catálogo.
         surface: {
-          50: '#fbfdfc',
-          100: '#f6f9f8',
-          200: '#eef4f1',
-          300: '#e4efe8',
-          400: '#d7e9de',
-          500: '#c1e0cf'
-        }
+          50: '#f7f9ff',
+          100: '#eef2ff',
+          200: '#e3e9fb',
+          300: '#d5ddf5',
+          400: '#c2cdee',
+          500: '#a9b7e3'
+        },
+        // Noite cobalto: superfícies da marca.
+        night: {
+          DEFAULT: '#0b1640',
+          600: '#22357f',
+          700: '#172766',
+          800: '#101e52',
+          900: '#0b1640'
+        },
+        // Sinal: desconto real.
+        signal: {
+          DEFAULT: '#ff4f5e',
+          600: '#e8364a'
+        },
+        // Varredura do radar.
+        scan: '#7cf4ff'
+      },
+      fontFamily: {
+        display: ['var(--font-display)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-body)', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif']
       },
       boxShadow: {
-        soft: '0 10px 30px rgba(15, 23, 42, 0.06)',
-        card: '0 6px 18px rgba(15, 23, 42, 0.06)'
+        soft: '0 12px 32px -12px rgba(11, 22, 64, 0.18)',
+        card: '0 10px 28px -14px rgba(35, 64, 255, 0.35)'
       },
       borderRadius: {
-        // reduzimos o raio para evitar estética de template "rounded everything"
-        xl: '0.5rem'
+        xl: '0.75rem'
+      },
+      keyframes: {
+        sweep: { to: { transform: 'rotate(360deg)' } },
+        blip: {
+          '0%': { transform: 'scale(1)', opacity: '0.7' },
+          '70%, 100%': { transform: 'scale(2.6)', opacity: '0' }
+        }
+      },
+      animation: {
+        sweep: 'sweep 6s linear infinite',
+        blip: 'blip 2.4s ease-out infinite'
       }
     }
   },

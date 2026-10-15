@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ProductGrid } from '@/components/product-card'
 import { SectionHeading } from '@/components/section-heading'
 import { EmptyState } from '@/components/empty-state'
+import { RadarHero } from '@/components/radar-hero'
 import { getCategories, listProducts } from '@/services/catalog'
 
 // Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
@@ -17,30 +18,13 @@ export default async function HomePage() {
 
   const hasProducts = deals.length + featured.length + recent.length > 0
 
-  return (
-    <div className="mx-auto max-w-7xl space-y-10 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-      <section className="rounded-lg bg-brand-700 px-6 py-8 text-white sm:px-10">
-        <h1 className="max-w-2xl text-2xl font-bold sm:text-3xl">Ofertas reais, preços conferidos.</h1>
-        <p className="mt-2 max-w-2xl text-sm text-brand-50 sm:text-base">
-          Selecionamos oportunidades nas maiores lojas do Brasil e mostramos o desconto só quando ele existe de verdade.
-        </p>
-        <form action="/buscar" method="get" role="search" className="mt-5 flex max-w-xl gap-2">
-          <label htmlFor="busca-home" className="sr-only">
-            Buscar ofertas
-          </label>
-          <input
-            id="busca-home"
-            name="q"
-            type="search"
-            placeholder="Ex.: air fryer, notebook, fone bluetooth"
-            className="min-w-0 flex-1 rounded-md border-0 px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-300"
-          />
-          <button type="submit" className="rounded-md bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
-            Buscar
-          </button>
-        </form>
-      </section>
+  const totalOffers = categories.reduce((sum, category) => sum + (category.productsCount ?? 0), 0)
+  const checkedAt = recent[0]?.last_price_update ?? null
 
+  return (
+    <>
+      <RadarHero deals={deals} totalOffers={totalOffers} checkedAt={checkedAt} />
+      <div className="mx-auto max-w-7xl space-y-12 px-4 pb-14 pt-10 sm:px-6 lg:px-8">
       {!hasProducts ? (
         <EmptyState
           title="Estamos preparando as primeiras ofertas"
@@ -62,7 +46,7 @@ export default async function HomePage() {
 
       {featured.length ? (
         <section className="space-y-4">
-          <SectionHeading title="Destaques" description="Produtos escolhidos pela nossa curadoria." />
+          <SectionHeading title="Destaques" description="Quedas de preço reais em categorias diferentes, escolhidas pelo radar a cada 6 horas." />
           <ProductGrid products={featured} />
         </section>
       ) : null}
@@ -75,14 +59,14 @@ export default async function HomePage() {
               <Link
                 key={category.id}
                 href={`/categoria/${category.slug}`}
-                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-brand-300"
+                className="group flex items-center gap-3 rounded-xl border border-surface-300 bg-white p-3.5 transition hover:border-brand-500"
               >
-                <span className="text-2xl" aria-hidden>
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-100 text-2xl transition group-hover:bg-brand-50" aria-hidden>
                   {category.icon}
                 </span>
                 <span>
                   <span className="block text-sm font-semibold text-slate-900">{category.name}</span>
-                  <span className="block text-xs text-slate-500">
+                  <span className="tabular block text-xs text-slate-500">
                     {category.productsCount} {category.productsCount === 1 ? 'oferta' : 'ofertas'}
                   </span>
                 </span>
@@ -98,6 +82,7 @@ export default async function HomePage() {
           <ProductGrid products={recent} />
         </section>
       ) : null}
-    </div>
+      </div>
+    </>
   )
 }

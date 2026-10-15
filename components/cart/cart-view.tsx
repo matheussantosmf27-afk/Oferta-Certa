@@ -87,7 +87,7 @@ export function CartView() {
         {rows.map((item) => {
           const product = products.get(item.productId) as Product
           return (
-            <li key={item.productId} className="flex gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:gap-4 sm:p-4">
+            <li key={item.productId} className="flex gap-3 rounded-xl border border-surface-300 bg-white p-3 sm:gap-4 sm:p-4">
               <Link href={`/produto/${product.slug}`} className="flex h-20 w-20 shrink-0 items-center justify-center sm:h-24 sm:w-24">
                 {product.image_url ? (
                   <Image src={product.image_url} alt="" width={96} height={96} className="max-h-full w-auto object-contain" />
@@ -154,7 +154,7 @@ export function CartView() {
         })}
       </ul>
 
-      <aside className="h-fit space-y-4 rounded-lg border border-slate-200 bg-white p-5 lg:sticky lg:top-4">
+      <aside className="h-fit space-y-4 rounded-xl border border-surface-300 bg-white p-5 lg:sticky lg:top-4">
         <h2 className="text-lg font-semibold text-slate-950">Resumo</h2>
         <dl className="space-y-1 text-sm">
           <div className="flex justify-between">
