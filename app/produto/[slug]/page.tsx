@@ -11,6 +11,7 @@ import { PriceHistory } from '@/components/price-history'
 import { AddToCartButton } from '@/components/cart/add-to-cart-button'
 import { formatCurrency } from '@/lib/price'
 import { getSiteUrl } from '@/lib/site'
+import { storeNotice } from '@/lib/stores'
 
 // Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
 export const revalidate = 300
@@ -127,6 +128,9 @@ export default async function ProductPage({ params }: Props) {
                 Pagamento e entrega pelo {product.marketplace_name}, com a proteção de compra deles. Você finaliza a compra na página do
                 vendedor.
               </p>
+              {storeNotice(product.marketplace_slug) ? (
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{storeNotice(product.marketplace_slug)}</p>
+              ) : null}
               <FavoriteButton productId={product.id} />
               <ShareActions url={productUrl} />
             </div>

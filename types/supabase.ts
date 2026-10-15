@@ -477,6 +477,7 @@ export type Database = {
           id: string
           logo: string | null
           name: string
+          price_max_age_days: number | null
           slug: string
           updated_at: string
         }
@@ -487,6 +488,7 @@ export type Database = {
           id?: string
           logo?: string | null
           name: string
+          price_max_age_days?: number | null
           slug: string
           updated_at?: string
         }
@@ -497,6 +499,7 @@ export type Database = {
           id?: string
           logo?: string | null
           name?: string
+          price_max_age_days?: number | null
           slug?: string
           updated_at?: string
         }
@@ -809,6 +812,7 @@ export type Database = {
           finished_at: string | null
           id: string
           message: string | null
+          source: string
           started_at: string
           status: string
           terms_count: number
@@ -824,6 +828,7 @@ export type Database = {
           finished_at?: string | null
           id?: string
           message?: string | null
+          source?: string
           started_at?: string
           status?: string
           terms_count?: number
@@ -839,6 +844,7 @@ export type Database = {
           finished_at?: string | null
           id?: string
           message?: string | null
+          source?: string
           started_at?: string
           status?: string
           terms_count?: number
@@ -850,6 +856,7 @@ export type Database = {
       radar_search_terms: {
         Row: {
           min_price: number | null
+          marketplaces: string[]
           active: boolean
           category_id: string | null
           created_at: string
@@ -861,6 +868,7 @@ export type Database = {
         }
         Insert: {
           min_price?: number | null
+          marketplaces?: string[]
           active?: boolean
           category_id?: string | null
           created_at?: string
@@ -872,6 +880,7 @@ export type Database = {
         }
         Update: {
           min_price?: number | null
+          marketplaces?: string[]
           active?: boolean
           category_id?: string | null
           created_at?: string

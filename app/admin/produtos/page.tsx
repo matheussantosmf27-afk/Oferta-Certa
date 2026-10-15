@@ -12,6 +12,7 @@ const REASON_LABEL: Record<string, string> = {
   despublicado_manual: 'despublicado no painel',
   despublicado_execucao: 'despublicado com a coleta',
   regra_qualidade: 'fora das regras de qualidade',
+  preco_desatualizado: 'preço sem atualização há mais de 7 dias',
 }
 const UUID_RE = /^[0-9a-f-]{36}$/i
 

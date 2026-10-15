@@ -20,8 +20,9 @@ export default function PrivacyPage() {
         <h2>O que coletamos</h2>
         <ul>
           <li>
-            <strong>Conta (opcional):</strong> se você se cadastrar, guardamos seu e-mail e a senha protegida pelo nosso
-            provedor de autenticação. Não vemos a sua senha.
+            <strong>Conta (opcional):</strong> se você se cadastrar com e-mail, guardamos o e-mail e a senha protegida pelo
+            nosso provedor de autenticação — não vemos a sua senha. Se entrar com o Google, recebemos apenas seu nome, e-mail
+            e foto de perfil.
           </li>
           <li>
             <strong>Favoritos:</strong> os produtos que você salva. Sem conta, ficam só no seu navegador.

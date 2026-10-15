@@ -13,7 +13,7 @@ export default function TermsPage() {
       <section>
         <h2>O que é o Oferta Certa</h2>
         <p>
-          Um site que reúne ofertas de lojas parceiras, como o Mercado Livre. O Oferta Certa não vende, não entrega e não
+          Um site que reúne ofertas de lojas parceiras, como Mercado Livre, Shopee, AliExpress e Amazon. O Oferta Certa não vende, não entrega e não
           recebe pagamento por produtos: toda compra é feita diretamente na loja, sob as regras dela.
         </p>
       </section>

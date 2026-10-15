@@ -76,6 +76,10 @@ export function ProductForm({
         <Label text="Seu link de afiliado">
           <input name="affiliate_url" type="url" defaultValue={product?.affiliate_url} placeholder="https://…" className={input} />
         </Label>
+        <p className="mt-1 text-xs text-slate-500">
+          Amazon: gere o link pela barra SiteStripe (logado na sua conta de Associado) e cole aqui. Sem a API da Amazon, o preço não é
+          atualizado sozinho: o produto sai do site 7 dias após o último salvamento, a menos que você confira e salve de novo.
+        </p>
         {product?.source_url ? (
           <a href={product.source_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-brand-700 hover:underline">
             Página original do produto

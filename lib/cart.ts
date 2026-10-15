@@ -1,5 +1,5 @@
 /**
- * Carrinho do Oferta Certa. A compra e o pagamento acontecem no Mercado Livre:
+ * Carrinho do Oferta Certa. A compra e o pagamento acontecem na loja de cada produto:
  * o carrinho só organiza o que o cliente quer comprar e o leva, item a item, à finalização.
  * Fica guardado neste navegador (localStorage).
  */
@@ -7,7 +7,7 @@
 export interface CartItem {
   productId: string
   quantity: number
-  /** Já levado à finalização no Mercado Livre nesta visita. */
+  /** Já levado à finalização na loja nesta visita. */
   sentToCheckout: boolean
   addedAt: string
 }
@@ -76,7 +76,7 @@ export function cartCount(items: CartItem[]): number {
   return items.reduce((sum, item) => sum + item.quantity, 0)
 }
 
-/** Total estimado com os preços conferidos pelo site (o valor final é o do Mercado Livre). */
+/** Total estimado com os preços conferidos pelo site (o valor final é o da loja). */
 export function cartTotal(items: CartItem[], prices: Map<string, number>): number {
   const cents = items.reduce((sum, item) => sum + Math.round((prices.get(item.productId) ?? 0) * 100) * item.quantity, 0)
   return cents / 100
