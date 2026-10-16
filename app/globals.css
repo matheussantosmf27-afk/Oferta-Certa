@@ -66,3 +66,14 @@ textarea {
     animation: none !important;
   }
 }
+
+@layer utilities {
+  /* Rolagem sem barra visível (o conteúdo continua rolável por toque, roda e teclado). */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

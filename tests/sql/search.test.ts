@@ -82,6 +82,7 @@ beforeAll(async () => {
   t = await createTestDb([
     migrationFunction('014_trusted_discounts_radar_status.sql', 'create or replace function public.product_discount_status('),
     migration('016_smart_search.sql'),
+    migration('018_public_products_view.sql'),
   ])
   const market = (await t.q<{ id: string }>("insert into marketplaces (slug, name) values ('mercado-livre', 'Mercado Livre') returning id"))[0].id
   const categoryIds = new Map<string, string>()
@@ -261,13 +262,23 @@ describe('search_catalog', () => {
 
   it('desconto público some quando o preço muda até o próximo recálculo', async () => {
     await t.q('update products set current_price = 4100 where id = $1', [ids.get('s25')])
-    const [before] = await t.q<{ discount_percentage: number | null }>('select discount_percentage from get_public_products($1)', [ids.get('s25')])
+    const [before] = await t.q<{ discount_percentage: number | null }>('select discount_percentage from public_products where id = $1', [ids.get('s25')])
     expect(before.discount_percentage).toBeNull()
     await t.q('select public.refresh_discount_statuses()')
-    const [after] = await t.q<{ discount_percentage: number | null }>('select discount_percentage from get_public_products($1)', [ids.get('s25')])
+    const [after] = await t.q<{ discount_percentage: number | null }>('select discount_percentage from public_products where id = $1', [ids.get('s25')])
     expect(after.discount_percentage).toBe(18)
     await t.q('update products set current_price = 4000 where id = $1', [ids.get('s25')])
     await t.q('select public.refresh_discount_statuses()')
+  })
+
+  it('vitrine pública (view) mostra só produtos ativos com link e não expõe colunas internas', async () => {
+    const rows = await t.q<Record<string, unknown>>('select * from public_products')
+    const [{ n }] = await t.q<{ n: number }>("select count(*)::int as n from products where status = 'active' and affiliate_url <> ''")
+    expect(rows).toHaveLength(n)
+    expect(Object.keys(rows[0])).not.toContain('affiliate_url')
+    expect(Object.keys(rows[0])).not.toContain('external_id')
+    const [fn] = await t.q<{ n: number }>('select count(*)::int as n from get_public_products()')
+    expect(fn.n).toBe(n)
   })
 
   it('contagem por categoria considera só produtos publicados', async () => {
