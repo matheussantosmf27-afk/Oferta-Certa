@@ -1007,7 +1007,40 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      public_products: {
+        Row: {
+          best_value: boolean
+          brand: string
+          category_id: string
+          category_name: string
+          category_slug: string
+          created_at: string
+          current_price: number
+          description: string
+          discount_percentage: number | null
+          featured: boolean
+          flash_deal: boolean
+          free_shipping: boolean
+          gallery: string[]
+          id: string
+          image_url: string
+          installment_value: number | null
+          installments: string | null
+          last_price_update: string
+          marketplace_id: string
+          marketplace_name: string
+          marketplace_slug: string
+          name: string
+          old_price: number | null
+          rating: number | null
+          reviews_count: number | null
+          short_description: string
+          slug: string
+          trending: boolean
+          updated_at: string
+        }
+        Relationships: []
+      }
     }
     Functions: {
       get_product_redirect: {

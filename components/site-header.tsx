@@ -4,6 +4,7 @@ import { getCategories } from '@/services/catalog'
 import { CartLink } from '@/components/cart/cart-link'
 import { AccountLink } from '@/components/account-link'
 import { Logo } from '@/components/logo'
+import { CategoryRail } from '@/components/category-rail'
 
 export async function SiteHeader() {
   const categories = (await getCategories()).filter((category) => category.productsCount > 0)
@@ -69,26 +70,7 @@ export async function SiteHeader() {
         </div>
 
         {categories.length ? (
-          <nav aria-label="Categorias" className="-mx-1 mt-3 overflow-x-auto">
-            <ul className="flex gap-1 px-1 text-sm">
-              <li className="shrink-0">
-                <Link href="/ofertas" className="inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-2.5 font-medium text-white hover:border-scan">
-                  <span className="h-1.5 w-1.5 rounded-full bg-signal" aria-hidden />
-                  Ofertas do dia
-                </Link>
-              </li>
-              {categories.map((category) => (
-                <li key={category.id} className="shrink-0">
-                  <Link
-                    href={`/categoria/${category.slug}`}
-                    className="inline-flex border-b-2 border-transparent px-3 py-2.5 text-white/70 hover:border-white/40 hover:text-white"
-                  >
-                    {category.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
+          <CategoryRail categories={categories.map(({ id, slug, name }) => ({ id, slug, name }))} />
         ) : null}
       </div>
     </header>

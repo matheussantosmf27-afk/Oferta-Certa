@@ -36,7 +36,7 @@ export interface ProductQuery {
 
 export async function listProducts(query: ProductQuery = {}): Promise<Product[]> {
   const supabase = createPublicClient()
-  let request = supabase.rpc('get_public_products', {})
+  let request = supabase.from('public_products').select('*')
 
   const term = query.q ? sanitizeSearchTerm(query.q) : ''
   // Busca sem acento e por palavras (no banco); aqui só filtramos pelos ids encontrados.
@@ -91,7 +91,7 @@ export async function listProducts(query: ProductQuery = {}): Promise<Product[]>
 
 export const getProductBySlug = cache(async (slug: string): Promise<Product | null> => {
   const supabase = createPublicClient()
-  const { data, error } = await supabase.rpc('get_public_products', {}).eq('slug', slug).maybeSingle()
+  const { data, error } = await supabase.from('public_products').select('*').eq('slug', slug).maybeSingle()
   if (error) {
     logError('getProductBySlug', error)
     return null
@@ -139,7 +139,7 @@ export async function getProductsByIds(ids: string[]): Promise<Product[]> {
   const valid = Array.from(new Set(ids.filter(isUuid))).slice(0, 100)
   if (!valid.length) return []
   const supabase = createPublicClient()
-  const { data, error } = await supabase.rpc('get_public_products', {}).in('id', valid)
+  const { data, error } = await supabase.from('public_products').select('*').in('id', valid)
   if (error) {
     logError('getProductsByIds', error)
     return []
@@ -325,7 +325,7 @@ export async function searchCatalog(input: CatalogSearchInput): Promise<CatalogS
   if (!rows.length) return { products: [], total: 0, approximate: false, error: false }
 
   const { data: products, error: productsError } = await supabase
-    .rpc('get_public_products', {})
+    .from('public_products').select('*')
     .in(
       'id',
       rows.map((row) => row.id)
