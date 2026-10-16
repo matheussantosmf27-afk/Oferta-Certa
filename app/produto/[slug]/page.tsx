@@ -10,9 +10,10 @@ import { ProductGrid } from '@/components/product-card'
 import { PriceHistory } from '@/components/price-history'
 import { PriceXray } from '@/components/price-xray'
 import { AddToCartButton } from '@/components/cart/add-to-cart-button'
-import { formatCurrency } from '@/lib/price'
+import { displayDiscount, formatCurrency } from '@/lib/price'
 import { getSiteUrl } from '@/lib/site'
 import { storeNotice } from '@/lib/stores'
+import { findSpecConflicts, normalizeDescription } from '@/lib/description'
 
 // Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
 export const revalidate = 300
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const product = await getProductBySlug(slug)
   if (!product) return { title: 'Oferta não encontrada' }
   const lead = `${product.name} por ${formatCurrency(product.current_price)} em ${product.marketplace_name}.`
-  const summary = product.short_description || product.description
+  const summary = normalizeDescription(product.description).paragraphs[0] ?? product.short_description
   const description = summary ? `${lead} ${summary}`.slice(0, 300) : lead
   return {
     title: product.name,
@@ -50,8 +51,10 @@ export default async function ProductPage({ params }: Props) {
     getProductDetails(product.id),
     getProductInsights(product.id),
   ])
+  const description = normalizeDescription(product.description)
+  const conflicts = findSpecConflicts(product.description, details.specs)
   const images = [...new Set([product.image_url, ...(product.gallery ?? [])].filter(Boolean))].slice(0, 8)
-  const discount = product.discount_percentage && product.discount_percentage > 0 ? product.discount_percentage : null
+  const discount = displayDiscount(product)
   const productUrl = `${getSiteUrl()}/produto/${product.slug}`
   const updated = new Date(product.last_price_update)
 
@@ -60,7 +63,7 @@ export default async function ProductPage({ params }: Props) {
     '@type': 'Product',
     name: product.name,
     image: images.length ? images : undefined,
-    description: product.description || undefined,
+    description: description.paragraphs.join(' ').slice(0, 500) || undefined,
     brand: product.brand ? { '@type': 'Brand', name: product.brand } : undefined,
     offers: {
       '@type': 'Offer',
@@ -81,7 +84,7 @@ export default async function ProductPage({ params }: Props) {
         </Link>
       </nav>
 
-      <div className="mt-3 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="rounded-xl border border-surface-300 bg-white p-6">
           <ProductGallery images={images} alt={product.name} />
         </div>
@@ -149,21 +152,40 @@ export default async function ProductPage({ params }: Props) {
         </div>
       </div>
 
-      <div className={`mt-8 grid items-start gap-6 ${history.length && insights?.market ? 'lg:grid-cols-2' : ''}`}>
-        <PriceXray
-          price={product.current_price}
-          oldPrice={product.old_price}
-          marketplaceName={product.marketplace_name}
-          insights={insights}
-          history={history}
-        />
+      <div className={`mt-8 grid grid-cols-[minmax(0,1fr)] items-start gap-6 ${history.length && insights ? 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : ''}`}>
+        <PriceXray price={product.current_price} marketplaceName={product.marketplace_name} insights={insights} />
         <PriceHistory history={history} />
       </div>
 
-      {product.description || details.features.length ? (
+      {description.paragraphs.length || details.features.length ? (
         <section className="mt-8 rounded-xl border border-surface-300 bg-white p-6">
           <h2 className="font-display text-lg font-bold tracking-tight text-night">Sobre o produto</h2>
-          {product.description ? <p className="mt-3 max-w-3xl whitespace-pre-line text-[0.95rem] leading-7 text-slate-700">{product.description}</p> : null}
+          {description.paragraphs.length ? (
+            <div className="mt-3 max-w-3xl space-y-3 text-[0.95rem] leading-7 text-slate-700">
+              {description.paragraphs.map((paragraph, index) => (
+                <p key={index}>{paragraph}</p>
+              ))}
+            </div>
+          ) : null}
+          {description.truncated ? (
+            <p className="mt-2 text-xs text-slate-500">Mostramos um resumo da descrição. O texto completo está na página do produto na loja.</p>
+          ) : null}
+          {conflicts.length ? (
+            <div className="mt-4 flex max-w-3xl gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm leading-6 text-amber-900">
+              <Info className="mt-1 h-4 w-4 shrink-0" aria-hidden />
+              <p>
+                A descrição do vendedor e a ficha técnica não batem em:{' '}
+                {conflicts.map((conflict, index) => (
+                  <span key={conflict.label}>
+                    {index ? '; ' : ''}
+                    <strong className="font-semibold">{conflict.label.toLowerCase()}</strong> ({conflict.inDescription} na descrição,{' '}
+                    {conflict.inSpecs} na ficha)
+                  </span>
+                ))}
+                . Confirme na página da loja antes de comprar.
+              </p>
+            </div>
+          ) : null}
           {details.features.length ? (
             <ul className="mt-4 space-y-2">
               {details.features.map((feature) => (

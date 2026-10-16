@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { User } from 'lucide-react'
 import { createBrowserClient } from '@/lib/supabase/client'
 
@@ -11,6 +12,8 @@ import { createBrowserClient } from '@/lib/supabase/client'
  */
 function useSessionEmail(): string | null | undefined {
   const [email, setEmail] = useState<string | null | undefined>(undefined)
+  // Login e "Sair" acontecem no servidor (cookies) e terminam numa navegação: relê a sessão a cada página.
+  const pathname = usePathname()
   useEffect(() => {
     const supabase = createBrowserClient()
     let active = true
@@ -24,7 +27,7 @@ function useSessionEmail(): string | null | undefined {
       active = false
       listener.subscription.unsubscribe()
     }
-  }, [])
+  }, [pathname])
   return email
 }
 

@@ -10,6 +10,7 @@ const NAV = [
   { href: '/admin', label: 'Painel' },
   { href: '/admin/radar', label: 'Radar de Ofertas' },
   { href: '/admin/radar/termos', label: 'Termos do Radar' },
+  { href: '/admin/catalogo', label: 'Importação do catálogo' },
   { href: '/admin/automacao', label: 'Publicação automática' },
   { href: '/admin/produtos', label: 'Produtos' },
   { href: '/admin/categorias', label: 'Categorias' },

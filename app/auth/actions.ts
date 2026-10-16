@@ -46,7 +46,7 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) return { error: translateAuthError(error.message) }
 
-  revalidatePath('/', 'layout')
+  // O cabeçalho lê a sessão no navegador; não é preciso invalidar o cache das páginas públicas.
   redirect(safeNextPath(formData.get('next')))
 }
 
@@ -73,7 +73,6 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
   if (error) return { error: translateAuthError(error.message) }
 
   if (data.session) {
-    revalidatePath('/', 'layout')
     redirect('/minha-conta')
   }
   return { success: 'Conta criada! Enviamos um link de confirmação para o seu e-mail.' }
@@ -82,7 +81,6 @@ export async function signUp(_prev: FormState, formData: FormData): Promise<Form
 export async function signOut() {
   const supabase = await createServerClient()
   await supabase.auth.signOut()
-  revalidatePath('/', 'layout')
   redirect('/')
 }
 

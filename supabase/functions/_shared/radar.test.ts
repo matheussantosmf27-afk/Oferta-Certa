@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cutAtSentence,
   marketStats,
   sellerReputation,
   backoffDelay,
@@ -285,5 +286,34 @@ describe('sellerReputation', () => {
       power_seller: null,
       sales: null,
     })
+  })
+})
+
+describe('cutAtSentence', () => {
+  it('corta no fim da última frase e nunca no meio da palavra', () => {
+    const text = 'Primeira frase completa. Segunda frase também completa. Terceira frase que vai ser cortada no meio'
+    expect(cutAtSentence(text, 70)).toBe('Primeira frase completa. Segunda frase também completa.')
+    expect(cutAtSentence('palavras sem ponto nenhum aqui dentro', 20)).toBe('palavras sem ponto…')
+    expect(cutAtSentence('curto', 20)).toBe('curto')
+  })
+})
+
+describe('scoreCandidate com preço dos outros vendedores', () => {
+  const base = {
+    external_id: 'MLB1', title: 'Fone sem fio', permalink: 'https://www.mercadolivre.com.br/p/MLB1', image_url: 'https://x/y.jpg',
+    price: 193.03, original_price: 619, currency: 'BRL', free_shipping: true, rating: null, reviews_count: null, sold_quantity: null,
+    offers_count: 4, condition: 'new', brand: null, description: null, features: [], specs: [], gallery: [],
+  }
+
+  it('zera o desconto quando o preço anterior passa do que qualquer vendedor cobra', () => {
+    const result = scoreCandidate(base, { market: { offers_count: 4, max: 260 } })
+    expect(result.breakdown.desconto).toBe(0)
+    expect(result.flags).toContain('preco_anterior_acima_mercado')
+  })
+
+  it('mantém o desconto quando há vendedores cobrando perto do preço anterior', () => {
+    const result = scoreCandidate({ ...base, original_price: 250 }, { market: { offers_count: 4, max: 260 } })
+    expect(result.breakdown.desconto).toBeGreaterThan(0)
+    expect(result.flags).not.toContain('preco_anterior_acima_mercado')
   })
 })

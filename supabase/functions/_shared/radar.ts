@@ -76,6 +76,16 @@ const MAX_GALLERY = 8
 
 const cleanText = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max)
 
+/** Corta no fim da última frase dentro do limite (nunca no meio de uma palavra). */
+export function cutAtSentence(text: string, max: number): string {
+  if (text.length <= max) return text
+  const slice = text.slice(0, max)
+  const end = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('! '), slice.lastIndexOf('? '))
+  if (end > max * 0.5) return slice.slice(0, end + 1)
+  const space = slice.lastIndexOf(' ')
+  return `${slice.slice(0, space > 0 ? space : max)}…`
+}
+
 /**
  * Extrai o conteúdo de um produto do catálogo do ML (resultado de /products/search ou /products/{id}).
  * Nada é inventado: campos ausentes ficam vazios.
@@ -84,7 +94,7 @@ export function extractProductContent(product: unknown): ProductContent {
   if (!isDict(product)) return { description: null, features: [], specs: [], gallery: [] }
 
   const short = isDict(product.short_description) ? str(product.short_description.content) : str(product.short_description)
-  const description = short ? cleanText(short, 2000) : null
+  const description = short ? cutAtSentence(cleanText(short, 4000), 2000) : null
 
   const features = (Array.isArray(product.main_features) ? product.main_features : [])
     .map((item) => (isDict(item) ? str(item.text) : str(item)))
@@ -200,13 +210,21 @@ export function discountPercent(price: number, originalPrice: number | null | un
  * - descontos acima de 70% são tratados como suspeitos (sem pontos);
  * - sem avaliações, nada é presumido.
  */
-export function scoreCandidate(candidate: NormalizedCandidate, options: { bestSellerPosition?: number | null } = {}): ScoreResult {
+export function scoreCandidate(
+  candidate: NormalizedCandidate,
+  options: { bestSellerPosition?: number | null; market?: { offers_count: number; max: number } | null } = {}
+): ScoreResult {
   const breakdown: Record<string, number> = {}
   const flags: string[] = []
+  const market = options.market && options.market.offers_count >= 2 ? options.market : null
 
   if (candidate.original_price && candidate.original_price > candidate.price) {
     const pct = ((candidate.original_price - candidate.price) / candidate.original_price) * 100
-    if (pct > 70) {
+    if (market && candidate.original_price > market.max * 1.1) {
+      // "Preço anterior" acima do que qualquer vendedor cobra hoje: desconto não comprovado, sem pontos.
+      flags.push('preco_anterior_acima_mercado')
+      breakdown.desconto = 0
+    } else if (pct > 70) {
       flags.push('desconto_suspeito')
       breakdown.desconto = 0
     } else {

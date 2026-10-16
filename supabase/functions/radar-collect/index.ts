@@ -1,4 +1,5 @@
-// Edge Function: coleta do Radar de Ofertas (Mercado Livre e, com source='parceiros', Shopee e AliExpress).
+// Edge Function: coleta do Radar de Ofertas (Mercado Livre e, com source='parceiros', Shopee e AliExpress)
+// e importação do catálogo em lote (source='catalogo', com dry_run para simular).
 // Chamada pelo pg_cron (cabeçalho x-radar-secret) ou por um admin no painel (JWT do usuário).
 // Também conduz a conexão OAuth com o Mercado Livre (oauth_start / oauth_callback).
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
@@ -24,6 +25,22 @@ import {
   type AutoPublishCandidate,
   type AutoPublishSettings,
 } from '../_shared/autopublish.ts'
+import {
+  bump,
+  catalogIssues,
+  catalogPublishBlockers,
+  classifyIds,
+  emptyStats,
+  failedSeedState,
+  importSummary,
+  nextSeedState,
+  productIdentifiers,
+  seedSearchParams,
+  PUBLISH_FRESH_HOURS,
+  type CatalogPublishCandidate,
+  type CatalogSeed,
+  type ImportStats,
+} from '../_shared/catalog-import.ts'
 import {
   aliexpressRequestUrl,
   normalizeAliexpressProduct,
@@ -256,7 +273,7 @@ async function buildCandidate(db: Admin, product: Dict, bestSellers: BestSellers
   if (!candidate) return null
   const stats = marketStats(offers)
   if (stats) marketSeen.set(id, stats)
-  const { score, breakdown, flags } = scoreCandidate(candidate, { bestSellerPosition: bestSellers.get(id) ?? null })
+  const { score, breakdown, flags } = scoreCandidate(candidate, { bestSellerPosition: bestSellers.get(id) ?? null, market: stats })
   const results = Array.isArray(offers?.results) ? (offers.results as Dict[]) : []
   const best = results.find((offer) => offer.price === candidate.price)
   return {
@@ -269,6 +286,7 @@ async function buildCandidate(db: Admin, product: Dict, bestSellers: BestSellers
       seller_id: best?.seller_id ?? null,
       category_id: best?.category_id ?? null,
       best_seller_position: bestSellers.get(id) ?? null,
+      ...productIdentifiers(product.attributes),
     },
   }
 }
@@ -391,7 +409,7 @@ async function fillMissingContent(db: Admin) {
  * atualiza o preço ou, sem vendedor (404 / nenhuma oferta válida), conta uma ausência.
  * Duas ausências seguidas tornam o produto inativo (no banco, radar_refresh_products).
  */
-async function refreshPublished(db: Admin, seen: Set<string>) {
+async function refreshPublished(db: Admin, seen: Set<string>, limit = MAX_REFRESH_PER_RUN) {
   const { data: marketplace } = await db.from('marketplaces').select('id').eq('slug', MARKETPLACE_SLUG).maybeSingle()
   if (!marketplace) return { refreshed: 0, expired: 0 }
   const { data: products, error } = await db
@@ -401,10 +419,10 @@ async function refreshPublished(db: Admin, seen: Set<string>) {
     .eq('marketplace_id', marketplace.id)
     .not('external_id', 'is', null)
     .order('offer_checked_at', { ascending: true, nullsFirst: true })
-    .limit(MAX_REFRESH_PER_RUN + seen.size)
+    .limit(limit + seen.size)
   if (error) throw error
 
-  const pending = (products ?? []).filter((product) => !seen.has(product.external_id as string)).slice(0, MAX_REFRESH_PER_RUN)
+  const pending = (products ?? []).filter((product) => !seen.has(product.external_id as string)).slice(0, limit)
   const results = await mapWithConcurrency(pending, 4, async (product) => {
     try {
       const offers = await mlGet(db, `/products/${encodeURIComponent(product.external_id as string)}/items?limit=20`)
@@ -447,7 +465,13 @@ async function autoPublish(db: Admin, runId: string) {
   const tag = affiliateTagFrom(config)
 
   const [{ count: publishedToday }, { data: marketplaces }] = await Promise.all([
-    db.from('products').select('id', { count: 'exact', head: true }).eq('publish_mode', 'auto').gte('published_at', startOfTodaySaoPaulo()),
+    // Limite diário das ofertas do Radar; publicações do catálogo têm limite próprio.
+    db
+      .from('products')
+      .select('id', { count: 'exact', head: true })
+      .eq('publish_mode', 'auto')
+      .or('publish_source.is.null,publish_source.eq.radar')
+      .gte('published_at', startOfTodaySaoPaulo()),
     db.from('marketplaces').select('id, slug'),
   ])
   const slugById = new Map((marketplaces ?? []).map((m) => [m.id as string, m.slug as string]))
@@ -495,14 +519,14 @@ async function autoPublish(db: Admin, runId: string) {
  * a categoria do termo. Falhas aqui não interrompem a coleta.
  */
 const knownCategories = new Set<string>()
-async function ensureCategoryPaths(db: Admin, leafIds: (string | null | undefined)[]) {
+async function ensureCategoryPaths(db: Admin, leafIds: (string | null | undefined)[], maxLookups = 40) {
   const wanted = [...new Set(leafIds.filter((id): id is string => typeof id === 'string' && /^MLB\d+$/.test(id)))].filter(
     (id) => !knownCategories.has(id)
   )
   if (!wanted.length) return
   const { data: cached } = await db.from('ml_categories').select('id').in('id', wanted)
   for (const row of cached ?? []) knownCategories.add(row.id as string)
-  const missing = wanted.filter((id) => !knownCategories.has(id)).slice(0, 40)
+  const missing = wanted.filter((id) => !knownCategories.has(id)).slice(0, maxLookups)
   const rows = await mapWithConcurrency(missing, 4, async (id) => {
     try {
       const body = await mlGet(db, `/categories/${encodeURIComponent(id)}`)
@@ -927,6 +951,330 @@ async function collectPartners(db: Admin, trigger: string) {
   return json({ message: fatal ?? `Lojas parceiras: ${upserted} candidatos atualizados${autoPublished ? `, ${autoPublished} publicados` : ''}${errors.length ? `, ${errors.length} erro(s)` : ''}.` }, failed ? 502 : 200)
 }
 
+/* ------------------------- Importação do catálogo ------------------------- */
+
+// A função tem ~150 s por chamada: busca até 80 s, publica até 115 s e grava o resumo.
+const CATALOG_SEEDS_UNTIL_MS = 80_000
+const CATALOG_TIME_BUDGET_MS = 115_000
+const CATALOG_MAX_SEEDS = 40
+const CATALOG_DRY_RUN_MAX_SEEDS = 3
+const CATALOG_REFRESH_LIMIT = 120
+const CATALOG_PUBLISH_BATCH = 400
+const MAX_VARIATIONS_PER_PARENT = 3
+const MAX_VARIATIONS_PER_PAGE = 30
+
+/** Ids das variações (cor, armazenamento...) de um produto do catálogo do ML. */
+function variationIds(product: Dict | undefined): string[] {
+  const ids = Array.isArray(product?.children_ids) ? (product.children_ids as unknown[]) : []
+  return ids.filter((id): id is string => typeof id === 'string' && /^MLB\d+$/.test(id))
+}
+
+/**
+ * Publica como produto de catálogo os candidatos completos com vendedor conferido nas últimas horas
+ * (inclusive de execuções anteriores que pararam no limite de tempo). O banco reconfere tudo.
+ */
+async function publishCatalogCandidates(db: Admin, runId: string, deadline: number) {
+  const { data: settings, error } = await db.from('automation_settings').select('*').maybeSingle()
+  if (error) throw error
+  const errors: { term: string; message: string }[] = []
+  if (!settings?.auto_publish_enabled || !settings?.catalog_publish_enabled) return { published: 0, errors }
+  const tag = affiliateTagFrom(settings as AutoPublishSettings)
+  if (!tag) {
+    errors.push({ term: 'publicação do catálogo', message: 'Etiqueta de afiliado do Mercado Livre não configurada.' })
+  }
+
+  const since = new Date(Date.now() - PUBLISH_FRESH_HOURS * 3_600_000).toISOString()
+  const [{ data: rows, error: listError }, { data: marketplaces }] = await Promise.all([
+    db
+      .from('candidate_products')
+      .select('id, status, is_demo, brand, image_url, condition, price, original_price, suggested_category_id, score, score_breakdown, last_seen_at, last_run_id, product_id, permalink, affiliate_url, marketplace_id')
+      .eq('status', 'pending')
+      .eq('is_demo', false)
+      .is('product_id', null)
+      .not('suggested_category_id', 'is', null)
+      .gte('last_seen_at', since)
+      .order('score', { ascending: false })
+      .limit(CATALOG_PUBLISH_BATCH),
+    db.from('marketplaces').select('id, slug'),
+  ])
+  if (listError) throw listError
+  const slugById = new Map((marketplaces ?? []).map((m) => [m.id as string, m.slug as string]))
+
+  let published = 0
+  const now = Date.now()
+  for (const row of rows ?? []) {
+    if (Date.now() > deadline) break
+    // Mesmas regras do banco: o que ele recusaria nem é tentado (não vira erro a cada execução).
+    if (catalogPublishBlockers(row as unknown as CatalogPublishCandidate, now, Number(settings.auto_publish_max_discount ?? 100)).length) continue
+    const candidate = { ...row, marketplace_slug: slugById.get(row.marketplace_id as string) ?? null } as unknown as AutoPublishCandidate
+    const url = affiliateUrlFor(candidate, tag)
+    if (!url) continue
+    const { error: publishError } = await db.rpc('publish_catalog_candidate_internal', {
+      p_candidate_id: row.id,
+      p_affiliate_url: url,
+      p_run_id: runId,
+    })
+    if (publishError) {
+      errors.push({ term: 'publicação do catálogo', message: publishError.message })
+      if (/desligada|Limite/i.test(publishError.message)) break
+      continue
+    }
+    published++
+  }
+  return { published, errors }
+}
+
+/**
+ * Importação do catálogo em lote: processa a próxima página de cada semente pendente
+ * (catalog_import_seeds), grava os candidatos (upsert pela chave loja + id do produto), publica os
+ * completos e registra um resumo com números reais. dry_run consulta a API mas não grava nada.
+ */
+async function collectCatalog(db: Admin, trigger: string, options: { dryRun: boolean; maxSeeds?: number }) {
+  const started = Date.now()
+  const elapsed = () => Date.now() - started
+  const { data: runId, error: beginError } = await db.rpc('radar_begin_run', { p_trigger: trigger })
+  if (beginError) throw beginError
+  if (!runId) return json({ message: 'Já existe uma coleta em andamento.' }, 409)
+  await db.from('radar_runs').update({ source: 'catalogo', dry_run: options.dryRun }).eq('id', runId)
+
+  const stats: ImportStats = emptyStats(options.dryRun)
+  const errors: { term: string; message: string }[] = []
+  const preview: { busca: string; encontrados: number; novos: number; atualizados: number; rejeitados: number }[] = []
+  const seen = new Set<string>()
+  const noBestSellers: BestSellers = new Map()
+  let fatal: string | null = null
+  marketSeen.clear()
+
+  try {
+    const { data: marketplace } = await db.from('marketplaces').select('id').eq('slug', MARKETPLACE_SLUG).maybeSingle()
+    if (!marketplace) throw new Error('Loja mercado-livre não cadastrada.')
+
+    // 1. Reconfere o preço dos publicados há mais tempo sem conferência (catálogo grande continua atualizado).
+    if (!options.dryRun) {
+      try {
+        const result = await refreshPublished(db, seen, CATALOG_REFRESH_LIMIT)
+        stats.refreshed = result.refreshed
+        stats.expired = result.expired
+      } catch (refreshError) {
+        bump(stats.errors_by_source, MARKETPLACE_SLUG)
+        errors.push({ term: 'acompanhamento de preço', message: refreshError instanceof Error ? refreshError.message : String(refreshError) })
+      }
+    }
+
+    // 2. Sementes pendentes, intercalando categorias (prioridade) e retomando de onde pararam (next_offset).
+    const maxSeeds = options.dryRun
+      ? Math.min(options.maxSeeds ?? CATALOG_DRY_RUN_MAX_SEEDS, CATALOG_DRY_RUN_MAX_SEEDS)
+      : Math.min(options.maxSeeds ?? CATALOG_MAX_SEEDS, CATALOG_MAX_SEEDS)
+    const { data: seeds, error: seedsError } = await db
+      .from('catalog_import_seeds')
+      .select('id, query, category_id, min_price, page_size, max_pages, next_offset, attempts, total_found, total_saved')
+      .eq('status', 'pending')
+      .eq('marketplace_slug', MARKETPLACE_SLUG)
+      .lte('next_run_at', new Date().toISOString())
+      .order('priority', { ascending: false })
+      .order('next_run_at', { ascending: true })
+      .limit(maxSeeds)
+    if (seedsError) throw seedsError
+
+    for (const seed of (seeds ?? []) as (CatalogSeed & { total_found: number; total_saved: number })[]) {
+      if (elapsed() > CATALOG_SEEDS_UNTIL_MS) break
+      stats.seeds_processed++
+      try {
+        const search = await mlGet(db, `/products/search?${seedSearchParams(seed)}`)
+        const products = Array.isArray(search?.results) ? (search.results as Dict[]) : []
+        const paging = search?.paging && typeof search.paging === 'object' ? (search.paging as Dict) : null
+        const total = paging && Number.isFinite(Number(paging.total)) ? Number(paging.total) : null
+        stats.found += products.length
+
+        const byId = new Map(products.map((product) => [String(product.id ?? ''), product]))
+        const ids = [...byId.keys()].filter((id) => /^MLB\d+$/.test(id))
+        const lastSeen = new Map<string, string | null>()
+        if (ids.length) {
+          const { data: rows, error } = await db
+            .from('candidate_products')
+            .select('external_id, last_seen_at')
+            .eq('marketplace_id', marketplace.id)
+            .in('external_id', ids)
+          if (error) throw error
+          for (const row of rows ?? []) lastSeen.set(row.external_id as string, row.last_seen_at as string | null)
+        }
+        const { fresh, duplicates, recent } = classifyIds(ids, seen, lastSeen, Date.now())
+        stats.duplicates += duplicates.length
+        stats.skipped_recent += recent.length
+        stats.checked += fresh.length
+
+        let failures = 0
+        const built = await mapWithConcurrency(fresh, 4, async (id) => {
+          try {
+            return await buildCandidate(db, byId.get(id) as Dict, noBestSellers)
+          } catch (lookupError) {
+            failures++
+            log('warn', 'consulta de ofertas falhou', { id, message: lookupError instanceof Error ? lookupError.message : String(lookupError) })
+            return undefined
+          }
+        })
+        // API instável: a página inteira é tentada de novo mais tarde, em vez de perder os produtos.
+        if (fresh.length && failures > fresh.length / 2) throw new Error(`Falha ao consultar ${failures} de ${fresh.length} produtos`)
+
+        // Produto "pai" sem ofertas (ex.: o modelo sem cor/armazenamento): as ofertas ficam nas variações.
+        const parents = fresh.filter((id, index) => built[index] === null && variationIds(byId.get(id)).length)
+        const childIds = parents.flatMap((id) => variationIds(byId.get(id)).slice(0, MAX_VARIATIONS_PER_PARENT)).slice(0, MAX_VARIATIONS_PER_PAGE)
+        const parentsWithOffers = new Set<string>()
+        if (childIds.length) {
+          const childSeen = new Map<string, string | null>()
+          const { data: rows, error } = await db
+            .from('candidate_products')
+            .select('external_id, last_seen_at')
+            .eq('marketplace_id', marketplace.id)
+            .in('external_id', childIds)
+          if (error) throw error
+          for (const row of rows ?? []) {
+            childSeen.set(row.external_id as string, row.last_seen_at as string | null)
+            lastSeen.set(row.external_id as string, row.last_seen_at as string | null)
+          }
+          const children = classifyIds(childIds, seen, childSeen, Date.now())
+          stats.duplicates += children.duplicates.length
+          stats.skipped_recent += children.recent.length
+          stats.checked += children.fresh.length
+          stats.variations_checked += children.fresh.length
+          const parentOf = new Map(parents.flatMap((id) => variationIds(byId.get(id)).map((child) => [child, id] as const)))
+          for (const child of children.recent) parentsWithOffers.add(parentOf.get(child) as string)
+          const childBuilt = await mapWithConcurrency(children.fresh, 4, async (id) => {
+            try {
+              const product = await mlGet(db, `/products/${encodeURIComponent(id)}`)
+              const candidate = product ? await buildCandidate(db, product, noBestSellers) : null
+              if (candidate) parentsWithOffers.add(parentOf.get(id) as string)
+              return candidate
+            } catch (lookupError) {
+              failures++
+              log('warn', 'consulta de variação falhou', { id, message: lookupError instanceof Error ? lookupError.message : String(lookupError) })
+              return undefined
+            }
+          })
+          built.push(...childBuilt.filter((candidate) => candidate !== null))
+        }
+        if (failures) bump(stats.errors_by_source, MARKETPLACE_SLUG, failures)
+
+        const items: NonNullable<Awaited<ReturnType<typeof buildCandidate>>>[] = []
+        let rejected = 0
+        for (const [index, candidate] of built.entries()) {
+          if (candidate === undefined) continue
+          // Pai sem ofertas cujas variações foram importadas não conta como rejeitado.
+          if (candidate === null && index < fresh.length && parentsWithOffers.has(fresh[index])) continue
+          if (candidate === null) {
+            bump(stats.rejected, 'sem_vendedor_ativo')
+            rejected++
+            continue
+          }
+          if (belowMinPrice(candidate.price, seed.min_price)) {
+            bump(stats.rejected, 'abaixo_do_preco_minimo')
+            rejected++
+            continue
+          }
+          for (const issue of catalogIssues(candidate)) bump(stats.incomplete, issue)
+          items.push(candidate)
+        }
+        const created = items.filter((item) => !lastSeen.has(item.external_id)).length
+        stats.new += created
+        stats.updated += items.length - created
+
+        if (options.dryRun) {
+          preview.push({ busca: seed.query, encontrados: products.length, novos: created, atualizados: items.length - created, rejeitados: rejected })
+        } else {
+          if (items.length) {
+            await ensureCategoryPaths(db, items.map((item) => (typeof item.raw.category_id === 'string' ? item.raw.category_id : null)), 120)
+            const { error: upsertError } = await db.rpc('radar_upsert_candidates', {
+              p_marketplace_slug: MARKETPLACE_SLUG,
+              p_search_term: `catálogo: ${seed.query}`,
+              p_category_id: seed.category_id,
+              p_items: items,
+              p_run_id: runId,
+            })
+            if (upsertError) throw upsertError
+          }
+          const state = nextSeedState(seed, products.length, total, new Date())
+          if (state.status === 'done') stats.seeds_finished++
+          const { error: seedError } = await db
+            .from('catalog_import_seeds')
+            .update({
+              ...state,
+              last_run_at: new Date().toISOString(),
+              last_found: products.length,
+              total_found: seed.total_found + products.length,
+              total_saved: seed.total_saved + items.length,
+            })
+            .eq('id', seed.id)
+          if (seedError) throw seedError
+        }
+      } catch (seedError) {
+        const message = seedError instanceof Error ? seedError.message : String(seedError)
+        stats.seeds_failed++
+        bump(stats.errors_by_source, MARKETPLACE_SLUG)
+        errors.push({ term: `catálogo: ${seed.query}`, message })
+        log('warn', 'semente do catálogo falhou', { query: seed.query, message })
+        if (!options.dryRun) {
+          await db
+            .from('catalog_import_seeds')
+            .update({ ...failedSeedState(seed, message, new Date()), last_run_at: new Date().toISOString() })
+            .eq('id', seed.id)
+        }
+        if (/credenciais|recusou o token/i.test(message)) {
+          fatal = message
+          break
+        }
+      }
+      await sleep(200)
+    }
+
+    if (!options.dryRun && !fatal) {
+      try {
+        const result = await publishCatalogCandidates(db, runId, started + CATALOG_TIME_BUDGET_MS)
+        stats.published = result.published
+        stats.publish_errors = result.errors.length
+        errors.push(...result.errors.slice(0, 10))
+      } catch (publishError) {
+        errors.push({ term: 'publicação do catálogo', message: publishError instanceof Error ? publishError.message : String(publishError) })
+      }
+      try {
+        await updateMarket(db)
+      } catch (marketError) {
+        errors.push({ term: 'raio-X do preço', message: marketError instanceof Error ? marketError.message : String(marketError) })
+      }
+      const { count } = await db
+        .from('candidate_products')
+        .select('id', { count: 'exact', head: true })
+        .eq('last_run_id', runId)
+        .eq('status', 'pending')
+      stats.pending_review = count ?? 0
+    }
+  } catch (runError) {
+    fatal = runError instanceof Error ? runError.message : String(runError)
+  } finally {
+    const worked = stats.seeds_processed > stats.seeds_failed || stats.refreshed > 0
+    const status = fatal ? 'error' : errors.length ? (worked ? 'partial' : 'error') : 'success'
+    const message = fatal ?? importSummary(stats)
+    await db
+      .from('radar_runs')
+      .update({
+        status,
+        finished_at: new Date().toISOString(),
+        terms_count: stats.seeds_processed,
+        fetched_count: stats.found,
+        upserted_count: options.dryRun ? 0 : stats.new + stats.updated,
+        auto_published_count: stats.published,
+        refreshed_count: stats.refreshed,
+        expired_count: stats.expired,
+        errors: errors.slice(0, 50),
+        message,
+        stats: options.dryRun ? { ...stats, preview } : stats,
+      })
+      .eq('id', runId)
+    log(status === 'success' ? 'info' : 'warn', 'importação do catálogo finalizada', { runId, status, ...stats })
+  }
+
+  return json({ message: fatal ?? importSummary(stats), stats, ...(options.dryRun ? { preview } : {}) }, fatal ? 502 : 200)
+}
+
 /* --------------------------------- OAuth --------------------------------- */
 
 async function oauthStart(db: Admin) {
@@ -979,7 +1327,7 @@ Deno.serve(async (req) => {
     const caller = await authorize(req, db)
     if (!caller) return json({ error: 'Não autorizado' }, 401)
 
-    const body = (await req.json().catch(() => ({}))) as { action?: string; trigger?: string; source?: string }
+    const body = (await req.json().catch(() => ({}))) as { action?: string; trigger?: string; source?: string; dry_run?: boolean; max_seeds?: number }
     if (body.action === 'oauth_start') {
       if (caller !== 'admin') return json({ error: 'Apenas administradores' }, 403)
       return await oauthStart(db)
@@ -987,6 +1335,10 @@ Deno.serve(async (req) => {
 
     const trigger = caller === 'cron' ? 'schedule' : 'manual'
     if (body.source === 'parceiros') return await collectPartners(db, trigger)
+    if (body.source === 'catalogo') {
+      const maxSeeds = Number.isInteger(body.max_seeds) && (body.max_seeds as number) > 0 ? (body.max_seeds as number) : undefined
+      return await collectCatalog(db, trigger, { dryRun: body.dry_run === true, maxSeeds })
+    }
     return await collect(db, trigger)
   } catch (error) {
     log('error', 'falha inesperada', { message: error instanceof Error ? error.message : String(error) })
