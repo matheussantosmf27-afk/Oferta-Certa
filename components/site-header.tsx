@@ -6,7 +6,7 @@ import { AccountLink } from '@/components/account-link'
 import { Logo } from '@/components/logo'
 
 export async function SiteHeader() {
-  const categories = await getCategories()
+  const categories = (await getCategories()).filter((category) => category.productsCount > 0)
 
   return (
     <header className="bg-night text-white">

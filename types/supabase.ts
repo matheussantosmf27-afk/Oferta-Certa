@@ -70,6 +70,8 @@ export type Database = {
           auto_publish_max_per_day: number
           auto_publish_max_per_run: number
           auto_publish_min_score: number
+          catalog_publish_enabled: boolean
+          catalog_publish_max_per_day: number
           created_at: string
           id: boolean
           ml_matt_tool: string | null
@@ -83,6 +85,8 @@ export type Database = {
           auto_publish_max_discount?: number
           auto_publish_max_per_day?: number
           auto_publish_max_per_run?: number
+          catalog_publish_enabled?: boolean
+          catalog_publish_max_per_day?: number
           auto_publish_min_score?: number
           created_at?: string
           id?: boolean
@@ -97,6 +101,8 @@ export type Database = {
           auto_publish_max_discount?: number
           auto_publish_max_per_day?: number
           auto_publish_max_per_run?: number
+          catalog_publish_enabled?: boolean
+          catalog_publish_max_per_day?: number
           auto_publish_min_score?: number
           created_at?: string
           id?: boolean
@@ -816,6 +822,8 @@ export type Database = {
           id: string
           message: string | null
           source: string
+          stats: Json | null
+          dry_run: boolean
           started_at: string
           status: string
           terms_count: number
@@ -832,6 +840,8 @@ export type Database = {
           id?: string
           message?: string | null
           source?: string
+          stats?: Json | null
+          dry_run?: boolean
           started_at?: string
           status?: string
           terms_count?: number
@@ -848,11 +858,79 @@ export type Database = {
           id?: string
           message?: string | null
           source?: string
+          stats?: Json | null
+          dry_run?: boolean
           started_at?: string
           status?: string
           terms_count?: number
           trigger?: string
           upserted_count?: number
+        }
+        Relationships: []
+      }
+      catalog_import_seeds: {
+        Row: {
+          id: string
+          marketplace_slug: string
+          query: string
+          category_id: string | null
+          min_price: number | null
+          page_size: number
+          max_pages: number
+          priority: number
+          status: string
+          next_offset: number
+          next_run_at: string
+          attempts: number
+          last_error: string | null
+          last_run_at: string | null
+          last_found: number | null
+          total_found: number
+          total_saved: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          marketplace_slug?: string
+          query: string
+          category_id?: string | null
+          min_price?: number | null
+          page_size?: number
+          max_pages?: number
+          priority?: number
+          status?: string
+          next_offset?: number
+          next_run_at?: string
+          attempts?: number
+          last_error?: string | null
+          last_run_at?: string | null
+          last_found?: number | null
+          total_found?: number
+          total_saved?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          marketplace_slug?: string
+          query?: string
+          category_id?: string | null
+          min_price?: number | null
+          page_size?: number
+          max_pages?: number
+          priority?: number
+          status?: string
+          next_offset?: number
+          next_run_at?: string
+          attempts?: number
+          last_error?: string | null
+          last_run_at?: string | null
+          last_found?: number | null
+          total_found?: number
+          total_saved?: number
+          created_at?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -946,6 +1024,30 @@ export type Database = {
       }
       get_public_product_insights: {
         Args: { p_product_id: string }
+        Returns: Json
+      }
+      search_catalog: {
+        Args: {
+          p_query?: string | null
+          p_category?: string | null
+          p_brand?: string | null
+          p_marketplace?: string | null
+          p_sort?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: { id: string; rank: number; match_kind: string; trusted_discount: number | null; total_count: number }[]
+      }
+      search_catalog_facets: {
+        Args: { p_query?: string | null; p_category?: string | null; p_brand?: string | null }
+        Returns: Json
+      }
+      get_public_category_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: { category_id: string; products_count: number }[]
+      }
+      get_catalog_quality: {
+        Args: Record<PropertyKey, never>
         Returns: Json
       }
       search_public_products: {

@@ -5,7 +5,8 @@ import type { Product } from '@/types'
 import { displayDiscount, formatCurrency } from '@/lib/price'
 import { AddToCartButton } from '@/components/cart/add-to-cart-button'
 
-export function ProductCard({ product }: { product: Product }) {
+/** showDealStatus: diferencia oferta com desconto conferido de produto de catálogo (sem promoção confirmada). */
+export function ProductCard({ product, showDealStatus = false }: { product: Product; showDealStatus?: boolean }) {
   const discount = displayDiscount(product)
 
   return (
@@ -44,6 +45,13 @@ export function ProductCard({ product }: { product: Product }) {
             <p className="tabular font-display text-base font-bold tracking-tight text-night sm:text-lg">{formatCurrency(product.current_price)}</p>
             <AddToCartButton productId={product.id} variant="compact" />
           </div>
+          {showDealStatus ? (
+            discount ? (
+              <p className="mt-1 text-xs font-semibold text-emerald-700">Desconto conferido</p>
+            ) : (
+              <p className="mt-1 text-xs text-slate-500">Preço atual · sem promoção confirmada</p>
+            )
+          ) : null}
           {product.free_shipping ? (
             <p className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-700">
               <Truck className="h-3.5 w-3.5" aria-hidden /> Frete grátis
@@ -55,11 +63,11 @@ export function ProductCard({ product }: { product: Product }) {
   )
 }
 
-export function ProductGrid({ products }: { products: Product[] }) {
+export function ProductGrid({ products, showDealStatus = false }: { products: Product[]; showDealStatus?: boolean }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
       {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+        <ProductCard key={product.id} product={product} showDealStatus={showDealStatus} />
       ))}
     </div>
   )

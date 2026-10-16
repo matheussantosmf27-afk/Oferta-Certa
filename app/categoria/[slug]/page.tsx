@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const category = await getCategoryBySlug(slug)
   if (!category) return { title: 'Categoria não encontrada' }
   return {
-    title: `Ofertas de ${category.name}`,
+    title: category.name,
     description: category.description ?? `Ofertas selecionadas de ${category.name}.`,
     alternates: { canonical: `/categoria/${category.slug}` },
   }
@@ -46,9 +46,21 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
       <div className="mt-6">
         {products.length ? (
-          <ProductGrid products={products} />
+          <div className="space-y-4">
+            <ProductGrid products={products} showDealStatus />
+            {category.productsCount > products.length ? (
+              <p className="text-center">
+                <Link
+                  href={`/buscar?categoria=${category.slug}${sort !== 'relevancia' ? `&ordem=${sort}` : ''}`}
+                  className="inline-flex rounded-md border border-surface-300 bg-white px-4 py-2 text-sm font-semibold text-brand-700 hover:border-brand-500"
+                >
+                  Ver todos os {category.productsCount} produtos, com filtro por marca
+                </Link>
+              </p>
+            ) : null}
+          </div>
         ) : (
-          <EmptyState title="Nenhuma oferta nesta categoria ainda" description="Estamos conferindo novas ofertas. Volte em breve." />
+          <EmptyState title="Nenhum produto nesta categoria ainda" description="Estamos importando produtos desta categoria. Volte em breve." />
         )}
       </div>
     </div>

@@ -126,6 +126,24 @@ export default async function AutomationPage({ searchParams }: { searchParams: P
             />
             <span>Não publicar automaticamente anúncios com título em outro idioma (genéricos/internacionais).</span>
           </label>
+          <label className="flex items-start gap-2 text-sm text-slate-700 sm:col-span-2">
+            <input type="checkbox" name="catalog_publish_enabled" defaultChecked={settings?.catalog_publish_enabled ?? true} className="mt-0.5" />
+            <span>
+              Publicar também <strong>produtos de catálogo</strong> (importação em lote): completos, novos, com marca, foto, categoria e vendedor
+              conferido, mesmo sem promoção. Aparecem na busca e nas categorias sem selo de desconto.
+            </span>
+          </label>
+          <label className="text-sm">
+            <span className="block font-medium text-slate-700">Máximo de produtos de catálogo por dia</span>
+            <input
+              name="catalog_publish_max_per_day"
+              type="number"
+              min={0}
+              max={20000}
+              defaultValue={settings?.catalog_publish_max_per_day ?? 3000}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+          </label>
           <div className="text-sm sm:col-span-2">
             <span className="block font-medium text-slate-700">Etiqueta de afiliado (definida só pela validação do link)</span>
             <p className="mt-1 rounded-md bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700">

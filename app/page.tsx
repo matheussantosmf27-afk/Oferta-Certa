@@ -10,13 +10,15 @@ import { radarStatusText } from '@/lib/radar-status'
 export const revalidate = 300
 
 export default async function HomePage() {
-  const [deals, featured, recent, categories, radar] = await Promise.all([
+  const [deals, featured, recent, allCategories, radar] = await Promise.all([
     listProducts({ sort: 'maior-desconto', withDiscountOnly: true, limit: 8 }),
     listProducts({ featuredOnly: true, limit: 8 }),
     listProducts({ sort: 'recentes', limit: 12 }),
     getCategories(),
     getRadarStatus(),
   ])
+  // Categorias ainda sem produtos publicados não aparecem na vitrine (continuam em /categorias).
+  const categories = allCategories.filter((category) => category.productsCount > 0)
 
   const hasProducts = deals.length + featured.length + recent.length > 0
 
@@ -68,7 +70,7 @@ export default async function HomePage() {
                 <span>
                   <span className="block text-sm font-semibold text-slate-900">{category.name}</span>
                   <span className="tabular block text-xs text-slate-500">
-                    {category.productsCount} {category.productsCount === 1 ? 'oferta' : 'ofertas'}
+                    {category.productsCount} {category.productsCount === 1 ? 'produto' : 'produtos'}
                   </span>
                 </span>
               </Link>

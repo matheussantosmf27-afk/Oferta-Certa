@@ -107,12 +107,15 @@ export async function restoreCandidate(formData: FormData) {
 /** Dispara o coletor (Edge Function) usando a sessão do admin. */
 export async function runRadarNow(formData?: FormData) {
   await requireAdmin()
-  // 'parceiros' = Shopee e AliExpress; sem valor = Mercado Livre.
-  const source = formData?.get('source') === 'parceiros' ? 'parceiros' : undefined
+  // 'parceiros' = Shopee e AliExpress; 'catalogo' = importação do catálogo; sem valor = Radar do Mercado Livre.
+  const raw = formData?.get('source')
+  const source = raw === 'parceiros' || raw === 'catalogo' ? raw : undefined
+  const dryRun = source === 'catalogo' && formData?.get('dry_run') === 'on'
+  const path = source === 'catalogo' ? '/admin/catalogo' : '/admin/radar'
   const supabase = await createServerClient()
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
-  if (!token) back('/admin/radar', 'erro', 'Sessão expirada. Entre novamente.')
+  if (!token) back(path, 'erro', 'Sessão expirada. Entre novamente.')
 
   const { url, publishableKey } = getPublicSupabaseEnv()
   let message = ''
@@ -121,7 +124,7 @@ export async function runRadarNow(formData?: FormData) {
     const response = await fetch(`${url}/functions/v1/radar-collect`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, apikey: publishableKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trigger: 'manual', ...(source ? { source } : {}) }),
+      body: JSON.stringify({ trigger: 'manual', ...(source ? { source } : {}), ...(dryRun ? { dry_run: true } : {}) }),
       cache: 'no-store',
       signal: AbortSignal.timeout(55_000),
     })
@@ -134,8 +137,44 @@ export async function runRadarNow(formData?: FormData) {
       : 'Não foi possível chamar o coletor.'
     ok = error instanceof Error && error.name === 'TimeoutError'
   }
-  revalidatePath('/admin/radar')
-  back('/admin/radar', ok ? 'ok' : 'erro', message)
+  revalidatePath(path)
+  back(path, ok ? 'ok' : 'erro', message)
+}
+
+/** Volta uma semente da importação para a fila (após erro) ou pausa/retoma. */
+export async function updateCatalogSeed(formData: FormData) {
+  await requireAdmin()
+  const path = '/admin/catalogo'
+  const id = text(formData, 'seed_id')
+  const action = text(formData, 'action')
+  const supabase = await createServerClient()
+  const changes =
+    action === 'pause'
+      ? { status: 'paused' }
+      : { status: 'pending', attempts: 0, last_error: null, next_run_at: new Date().toISOString() }
+  const { error } = await supabase.from('catalog_import_seeds').update(changes).eq('id', id)
+  if (error) back(path, 'erro', friendly(error))
+  revalidatePath(path)
+  back(path, 'ok', action === 'pause' ? 'Busca pausada.' : 'Busca de volta na fila.')
+}
+
+/** Nova busca para a importação do catálogo. */
+export async function addCatalogSeed(formData: FormData) {
+  await requireAdmin()
+  const path = '/admin/catalogo'
+  const query = text(formData, 'query').replace(/\s+/g, ' ').slice(0, 100)
+  if (query.length < 2) back(path, 'erro', 'Digite a busca (mínimo 2 caracteres).')
+  const supabase = await createServerClient()
+  const { error } = await supabase.from('catalog_import_seeds').insert({
+    query,
+    category_id: text(formData, 'category_id') || null,
+    min_price: optionalNumber(formData, 'min_price'),
+    max_pages: boundedInt(formData, 'max_pages', 1, 10, 2),
+    priority: 200,
+  })
+  if (error) back(path, 'erro', friendly(error))
+  revalidatePath(path)
+  back(path, 'ok', `Busca “${query}” adicionada; entra na próxima importação.`)
 }
 
 /** Inicia a conexão OAuth com o Mercado Livre e leva o admin à tela de autorização. */
@@ -226,6 +265,8 @@ export async function saveAutomationSettings(formData: FormData) {
       auto_publish_max_per_day: boundedInt(formData, 'auto_publish_max_per_day', 0, 1000, 100),
       auto_publish_max_discount: boundedInt(formData, 'auto_publish_max_discount', 0, 100, 60),
       auto_publish_block_foreign_titles: formData.get('auto_publish_block_foreign_titles') === 'on',
+      catalog_publish_enabled: formData.get('catalog_publish_enabled') === 'on',
+      catalog_publish_max_per_day: boundedInt(formData, 'catalog_publish_max_per_day', 0, 20000, 3000),
       updated_by: user.id,
     })
     .eq('id', true)

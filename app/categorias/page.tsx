@@ -33,7 +33,7 @@ export default async function CategoriesPage() {
                   <span className="block font-semibold text-slate-950">{category.name}</span>
                   {category.description ? <span className="mt-1 block text-sm text-slate-600">{category.description}</span> : null}
                   <span className="mt-2 block text-xs font-medium text-brand-700">
-                    {category.productsCount} {category.productsCount === 1 ? 'oferta' : 'ofertas'}
+                    {category.productsCount} {category.productsCount === 1 ? 'produto' : 'produtos'}
                   </span>
                 </span>
               </Link>

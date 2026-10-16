@@ -149,19 +149,18 @@ export async function getProductsByIds(ids: string[]): Promise<Product[]> {
 
 export const getCategories = cache(async (): Promise<Category[]> => {
   const supabase = createPublicClient()
-  const [{ data: categories, error }, { data: products }] = await Promise.all([
+  // Contagem agregada no banco: não carrega a lista de produtos (o catálogo pode ter milhares).
+  const [{ data: categories, error }, { data: counts, error: countError }] = await Promise.all([
     supabase.from('categories').select('*').order('name'),
-    supabase.rpc('get_public_products', {}).select('category_id'),
+    supabase.rpc('get_public_category_counts', {}),
   ])
   if (error) {
     logError('getCategories', error)
     return []
   }
-  const counts = new Map<string, number>()
-  for (const row of (products ?? []) as { category_id: string }[]) {
-    counts.set(row.category_id, (counts.get(row.category_id) ?? 0) + 1)
-  }
-  return (categories ?? []).map((category) => ({ ...category, productsCount: counts.get(category.id) ?? 0 }))
+  if (countError) logError('getCategories/counts', countError)
+  const byCategory = new Map((counts ?? []).map((row) => [row.category_id, Number(row.products_count)]))
+  return (categories ?? []).map((category) => ({ ...category, productsCount: byCategory.get(category.id) ?? 0 }))
 })
 
 export async function getCategoryBySlug(slug: string): Promise<Category | null> {
@@ -281,4 +280,94 @@ export async function getRadarStatus(): Promise<RadarStatus | null> {
     return null
   }
   return parseRadarStatus(data)
+}
+
+export type MatchKind = 'exato' | 'aproximado' | 'todos'
+
+export interface CatalogSearchInput {
+  q?: string
+  category?: string | null
+  brand?: string | null
+  sort?: ProductSort
+  page?: number
+  pageSize?: number
+}
+
+export interface CatalogSearchResult {
+  products: Product[]
+  total: number
+  /** Nenhum resultado exato: a lista traz correspondências aproximadas (erro de digitação). */
+  approximate: boolean
+  error: boolean
+}
+
+/**
+ * Busca no catálogo publicado (função search_catalog no banco): relevância por marca, modelo,
+ * código, características e categoria; filtros, ordenação e paginação feitos no banco.
+ */
+export async function searchCatalog(input: CatalogSearchInput): Promise<CatalogSearchResult> {
+  const pageSize = Math.min(Math.max(input.pageSize ?? 24, 1), 60)
+  const page = Math.max(input.page ?? 1, 1)
+  const supabase = createPublicClient()
+  const { data: matches, error } = await supabase.rpc('search_catalog', {
+    p_query: input.q ? sanitizeSearchTerm(input.q) : null,
+    p_category: input.category ?? null,
+    p_brand: input.brand ?? null,
+    p_sort: input.sort ?? 'relevancia',
+    p_limit: pageSize,
+    p_offset: (page - 1) * pageSize,
+  })
+  if (error) {
+    logError('searchCatalog', error)
+    return { products: [], total: 0, approximate: false, error: true }
+  }
+  const rows = matches ?? []
+  if (!rows.length) return { products: [], total: 0, approximate: false, error: false }
+
+  const { data: products, error: productsError } = await supabase
+    .rpc('get_public_products', {})
+    .in(
+      'id',
+      rows.map((row) => row.id)
+    )
+  if (productsError) {
+    logError('searchCatalog/products', productsError)
+    return { products: [], total: 0, approximate: false, error: true }
+  }
+  const byId = new Map((products ?? []).map((product) => [product.id, product]))
+  return {
+    products: rows.map((row) => byId.get(row.id)).filter((product): product is Product => Boolean(product)),
+    total: Number(rows[0].total_count),
+    approximate: rows.every((row) => row.match_kind === 'aproximado'),
+    error: false,
+  }
+}
+
+export interface SearchFacets {
+  categories: { slug: string; name: string; count: number }[]
+  brands: { key: string; name: string; count: number }[]
+}
+
+/** Categorias e marcas disponíveis para a busca atual, com a quantidade de resultados. */
+export async function getSearchFacets(q: string, category: string | null, brand: string | null): Promise<SearchFacets> {
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('search_catalog_facets', {
+    p_query: q ? sanitizeSearchTerm(q) : null,
+    p_category: category,
+    p_brand: brand,
+  })
+  if (error || !data || typeof data !== 'object') {
+    if (error) logError('getSearchFacets', error)
+    return { categories: [], brands: [] }
+  }
+  const raw = data as { categories?: unknown; brands?: unknown }
+  const list = (value: unknown) => (Array.isArray(value) ? (value as Record<string, unknown>[]) : [])
+  return {
+    categories: list(raw.categories)
+      .filter((item) => typeof item.slug === 'string' && typeof item.name === 'string')
+      .map((item) => ({ slug: item.slug as string, name: item.name as string, count: Number(item.count) || 0 })),
+    brands: list(raw.brands)
+      .filter((item) => typeof item.key === 'string' && typeof item.name === 'string')
+      .map((item) => ({ key: item.key as string, name: item.name as string, count: Number(item.count) || 0 })),
+  }
 }
