@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { Check, ExternalLink, Info, ShieldCheck, Star, Truck } from 'lucide-react'
-import { getPriceHistory, getProductBySlug, getProductDetails, getProductInsights, listProducts } from '@/services/catalog'
+import { getPriceHistory, getProductBySlug, getProductDetails, getProductInsights, listProducts, resolveVariantSlug } from '@/services/catalog'
 import { ProductGallery } from '@/components/product-gallery'
 import { FavoriteButton } from '@/components/favorite-button'
 import { ShareActions } from '@/components/share-actions'
@@ -43,7 +43,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ProductPage({ params }: Props) {
   const { slug } = await params
   const product = await getProductBySlug(slug)
-  if (!product) notFound()
+  if (!product) {
+    // Variante escondida (outra cor/tamanho do mesmo produto está na vitrine): leva até ela.
+    const visible = await resolveVariantSlug(slug)
+    if (visible) redirect(`/produto/${visible}`)
+    notFound()
+  }
 
   const [related, history, details, insights] = await Promise.all([
     listProducts({ categorySlug: product.category_slug, excludeId: product.id, limit: 4 }),

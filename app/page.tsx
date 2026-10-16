@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ProductGrid } from '@/components/product-card'
 import { SectionHeading } from '@/components/section-heading'
@@ -5,9 +6,28 @@ import { EmptyState } from '@/components/empty-state'
 import { RadarHero } from '@/components/radar-hero'
 import { getCategories, getRadarStatus, listProducts } from '@/services/catalog'
 import { radarStatusText } from '@/lib/radar-status'
+import { SITE_NAME, getSiteUrl } from '@/lib/site'
 
 // Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
 export const revalidate = 300
+
+export const metadata: Metadata = { alternates: { canonical: '/' } }
+
+/** Dados estruturados do site: nome e caixa de busca nos resultados do Google. */
+function siteJsonLd() {
+  const base = getSiteUrl()
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: SITE_NAME,
+    url: base,
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: { '@type': 'EntryPoint', urlTemplate: `${base}/buscar?q={search_term_string}` },
+      'query-input': 'required name=search_term_string',
+    },
+  }
+}
 
 export default async function HomePage() {
   const [deals, featured, recent, allCategories, radar] = await Promise.all([
@@ -26,6 +46,7 @@ export default async function HomePage() {
 
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd()).replace(/</g, '\\u003c') }} />
       <RadarHero deals={deals} status={status} />
       <div className="mx-auto max-w-7xl space-y-12 px-4 pb-14 pt-10 sm:px-6 lg:px-8">
       {!hasProducts ? (
