@@ -6,6 +6,7 @@ import { requireAdmin } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
 import { getPublicSupabaseEnv } from '@/lib/supabase/env'
 import { slugify } from '@/lib/slug'
+import { isAllowedImageHost } from '@/lib/image-hosts.mjs'
 import { parseStores } from '@/lib/stores'
 import { analyzeMercadoLivreAffiliateLink, buildMercadoLivreAffiliateUrl } from '@/supabase/functions/_shared/autopublish'
 
@@ -417,6 +418,9 @@ export async function saveProduct(formData: FormData) {
   if (!text(formData, 'category_id') || !text(formData, 'marketplace_id')) back(formPath, 'erro', 'Escolha categoria e marketplace.')
   if (affiliateUrl && !isHttpsUrl(affiliateUrl)) back(formPath, 'erro', 'O link de afiliado precisa começar com https://.')
   if (imageUrl && !isHttpsUrl(imageUrl)) back(formPath, 'erro', 'A imagem precisa ser uma URL https.')
+  if (imageUrl && !isAllowedImageHost(new URL(imageUrl).hostname)) {
+    back(formPath, 'erro', 'Use uma imagem hospedada no próprio marketplace (Mercado Livre, Shopee, AliExpress ou Amazon).')
+  }
   if (status === 'active' && !affiliateUrl) back(formPath, 'erro', 'Produto ativo precisa de link de afiliado.')
 
   const payload = {

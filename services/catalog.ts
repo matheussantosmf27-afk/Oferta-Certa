@@ -135,6 +135,38 @@ export async function getProductDetails(productId: string): Promise<{ features: 
   return { features: data?.features ?? [], specs }
 }
 
+/** Todos os produtos ativos para o sitemap (só slug e data), em páginas de 1000 (limite do PostgREST). */
+export async function listSitemapProducts(max = 45_000): Promise<{ slug: string; last_price_update: string }[]> {
+  const supabase = createPublicClient()
+  const page = 1000
+  const rows: { slug: string; last_price_update: string }[] = []
+  for (let from = 0; from < max; from += page) {
+    const { data, error } = await supabase
+      .from('public_products')
+      .select('slug, last_price_update')
+      .order('id')
+      .range(from, Math.min(from + page, max) - 1)
+    if (error) {
+      logError('listSitemapProducts', error)
+      break
+    }
+    rows.push(...((data ?? []) as { slug: string; last_price_update: string }[]))
+    if (!data || data.length < page) break
+  }
+  return rows
+}
+
+/** Variante visível do mesmo produto quando o slug pedido está escondido na vitrine (ou null). */
+export async function resolveVariantSlug(slug: string): Promise<string | null> {
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('resolve_variant_slug', { p_slug: slug })
+  if (error) {
+    logError('resolveVariantSlug', error)
+    return null
+  }
+  return typeof data === 'string' && data !== slug ? data : null
+}
+
 export async function getProductsByIds(ids: string[]): Promise<Product[]> {
   const valid = Array.from(new Set(ids.filter(isUuid))).slice(0, 100)
   if (!valid.length) return []

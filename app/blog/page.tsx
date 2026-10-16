@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { SectionHeading } from '@/components/section-heading'
 import { getArticles } from '@/services/catalog'
@@ -6,13 +7,23 @@ import { EmptyState } from '@/components/empty-state'
 // Página pública em cache, renovada a cada 5 minutos (preços mudam a cada coleta).
 export const revalidate = 300
 
+export async function generateMetadata(): Promise<Metadata> {
+  const articles = await getArticles()
+  return {
+    title: 'Blog',
+    description: 'Guias e dicas para escolher bem e comprar na hora certa.',
+    alternates: { canonical: '/blog' },
+    robots: articles.length ? undefined : { index: false, follow: true },
+  }
+}
+
 export default async function BlogPage() {
   const articles = await getArticles()
 
   return (
     <div className="mx-auto max-w-7xl px-4 pb-10 pt-8 sm:px-6 lg:px-8">
       <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft sm:p-10">
-        <SectionHeading title="Blog" description="Conteúdo para ajudar você a escolher as melhores ofertas." />
+        <SectionHeading as="h1" title="Blog" description="Conteúdo para ajudar você a escolher as melhores ofertas." />
       </div>
 
       <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">

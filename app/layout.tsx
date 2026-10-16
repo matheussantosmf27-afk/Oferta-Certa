@@ -18,12 +18,15 @@ export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   title: { default: `${SITE_NAME} — ofertas e comparação de preços`, template: `%s | ${SITE_NAME}` },
   description: 'Ofertas selecionadas de grandes lojas, com preços atualizados e descontos reais.',
+  // Verificação do Google Search Console (opcional): defina NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION na Vercel.
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
   openGraph: {
     siteName: SITE_NAME,
     type: 'website',
     locale: 'pt_BR',
   },
-  alternates: { canonical: '/' },
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {

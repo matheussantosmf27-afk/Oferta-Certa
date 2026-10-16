@@ -1,12 +1,12 @@
 import type { MetadataRoute } from 'next'
-import { getCategories, listProducts } from '@/services/catalog'
+import { getCategories, listSitemapProducts } from '@/services/catalog'
 import { getSiteUrl } from '@/lib/site'
 
 export const revalidate = 3600
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = getSiteUrl()
-  const [categories, products] = await Promise.all([getCategories(), listProducts({ sort: 'recentes', limit: 100 })])
+  const [categories, products] = await Promise.all([getCategories(), listSitemapProducts()])
 
   return [
     { url: `${base}/`, changeFrequency: 'hourly', priority: 1 },

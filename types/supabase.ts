@@ -1176,6 +1176,7 @@ export type Database = {
             Args: { p_category_id: string | null; p_items: Json; p_marketplace_slug: string; p_run_id: string; p_search_term: string }
             Returns: number
           }
+      resolve_variant_slug: { Args: { p_slug: string }; Returns: string | null }
       slugify: { Args: { p_text: string }; Returns: string }
       unpublish_products: {
         Args: { p_product_ids?: string[]; p_run_id?: string }
